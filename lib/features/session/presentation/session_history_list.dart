@@ -6,19 +6,94 @@ import 'package:tracker_time/core/db/database.dart';
 import 'package:tracker_time/features/activity/application/activity_providers.dart';
 import '../application/session_providers.dart';
 
-class SessionHistoryList extends ConsumerWidget {
+class SessionHistoryList extends ConsumerStatefulWidget {
   const SessionHistoryList({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SessionHistoryList> createState() => _SessionHistoryListState();
+}
+
+class TimeGap {
+  final DateTime startTime;
+  final DateTime endTime;
+  final int durationMinutes;
+
+  TimeGap({
+    required this.startTime,
+    required this.endTime,
+  }) : durationMinutes = endTime.difference(startTime).inMinutes;
+}
+
+class _SessionHistoryListState extends ConsumerState<SessionHistoryList> {
+  bool _showTimeline = false;
+  DateTime _selectedDate = DateTime.now();
+
+  List<dynamic> _buildTimelineItems(List<Session> sessions, DateTime selectedDate) {
+    final startOfDay = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, 0, 0, 0);
+    final now = DateTime.now();
+    final isToday = selectedDate.year == now.year &&
+        selectedDate.month == now.month &&
+        selectedDate.day == now.day;
+    final endOfPeriod = isToday ? now : DateTime(selectedDate.year, selectedDate.month, selectedDate.day, 23, 59, 59);
+
+    final daySessions = sessions.where((s) {
+      if (s.endTime == null || s.isDeleted) return false;
+      return s.startTime.year == selectedDate.year &&
+          s.startTime.month == selectedDate.month &&
+          s.startTime.day == selectedDate.day;
+    }).toList();
+
+    daySessions.sort((a, b) => a.startTime.compareTo(b.startTime));
+
+    final List<dynamic> items = [];
+    DateTime currentTime = startOfDay;
+
+    for (final session in daySessions) {
+      if (session.startTime.difference(currentTime).inMinutes >= 1) {
+        items.add(TimeGap(
+          startTime: currentTime,
+          endTime: session.startTime,
+        ));
+      }
+      items.add(session);
+      currentTime = session.endTime!;
+    }
+
+    if (endOfPeriod.difference(currentTime).inMinutes >= 1) {
+      items.add(TimeGap(
+        startTime: currentTime,
+        endTime: endOfPeriod,
+      ));
+    }
+
+    return items;
+  }
+
+  void _changeDate(int days) {
+    setState(() {
+      _selectedDate = _selectedDate.add(Duration(days: days));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final sessionsAsync = ref.watch(allSessionsProvider);
     final activitiesAsync = ref.watch(allActivitiesProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('History'),
+        title: Text(_showTimeline ? 'Daily Timeline' : 'History'),
         actions: [
+          IconButton(
+            icon: Icon(_showTimeline ? Icons.list_alt_rounded : Icons.timeline_rounded),
+            tooltip: _showTimeline ? 'Show List View' : 'Show Timeline View',
+            onPressed: () {
+              setState(() {
+                _showTimeline = !_showTimeline;
+              });
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.more_time_rounded, color: AppTheme.primaryGlow),
             tooltip: 'Log Manual Session',
@@ -27,71 +102,231 @@ class SessionHistoryList extends ConsumerWidget {
           const SizedBox(width: 8),
         ],
       ),
-      body: sessionsAsync.when(
-        data: (sessions) {
-          // Exclude ongoing sessions (where endTime is null)
-          final completedSessions = sessions.where((s) => s.endTime != null).toList();
-
-          if (completedSessions.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: Column(
+        children: [
+          if (_showTimeline) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: AppTheme.surface,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(
-                    Icons.history_toggle_off_rounded,
-                    size: 64,
-                    color: AppTheme.textMuted.withOpacity(0.5),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded),
+                    onPressed: () => _changeDate(-1),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'No tracked sessions yet',
-                    style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 18,
+                  Text(
+                    DateFormat('EEEE, MMM d, y').format(_selectedDate),
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: AppTheme.textPrimary,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => _showManualLogDialog(context, ref),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Log Manual Session'),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    onPressed: () => _changeDate(1),
                   ),
                 ],
               ),
-            );
-          }
+            ),
+            const Divider(height: 1, color: AppTheme.border),
+          ],
+          Expanded(
+            child: sessionsAsync.when(
+              data: (sessions) {
+                final completedSessions = sessions.where((s) => s.endTime != null).toList();
 
-          final activities = activitiesAsync.value ?? [];
+                if (completedSessions.isEmpty && !_showTimeline) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.history_toggle_off_rounded,
+                          size: 64,
+                          color: AppTheme.textMuted.withOpacity(0.5),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No tracked sessions yet',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ElevatedButton.icon(
+                          onPressed: () => _showManualLogDialog(context, ref),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Log Manual Session'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
 
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            itemCount: completedSessions.length,
-            itemBuilder: (context, index) {
-              final session = completedSessions[index];
-              final activity = activities.firstWhere(
-                (a) => a.id == session.activityId,
-                orElse: () => Activity(
-                  id: session.activityId,
-                  name: 'Deleted Activity',
-                  color: AppTheme.textMuted.value,
-                  icon: 'star',
-                  isLimit: false,
-                  enforceLimit: false,
-                  isWeeklyFocus: true,
-                  isArchived: false,
-                  isDeleted: false,
-                  createdAt: DateTime.now(),
-                  updatedAt: DateTime.now(),
+                final activities = activitiesAsync.value ?? [];
+
+                if (_showTimeline) {
+                  final timelineItems = _buildTimelineItems(completedSessions, _selectedDate);
+
+                  if (timelineItems.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'No slots in timeline',
+                        style: TextStyle(color: AppTheme.textSecondary),
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: timelineItems.length,
+                    itemBuilder: (context, index) {
+                      final item = timelineItems[index];
+                      if (item is Session) {
+                        final activity = activities.firstWhere(
+                          (a) => a.id == item.activityId,
+                          orElse: () => Activity(
+                            id: item.activityId,
+                            name: 'Deleted Activity',
+                            color: AppTheme.textMuted.value,
+                            icon: 'star',
+                            isLimit: false,
+                            enforceLimit: false,
+                            isWeeklyFocus: true,
+                            isArchived: false,
+                            isDeleted: false,
+                            createdAt: DateTime.now(),
+                            updatedAt: DateTime.now(),
+                          ),
+                        );
+                        return _buildSessionTile(context, ref, item, activity);
+                      } else if (item is TimeGap) {
+                        return _buildGapTile(context, ref, item);
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: completedSessions.length,
+                  itemBuilder: (context, index) {
+                    final session = completedSessions[index];
+                    final activity = activities.firstWhere(
+                      (a) => a.id == session.activityId,
+                      orElse: () => Activity(
+                        id: session.activityId,
+                        name: 'Deleted Activity',
+                        color: AppTheme.textMuted.value,
+                        icon: 'star',
+                        isLimit: false,
+                        enforceLimit: false,
+                        isWeeklyFocus: true,
+                        isArchived: false,
+                        isDeleted: false,
+                        createdAt: DateTime.now(),
+                        updatedAt: DateTime.now(),
+                      ),
+                    );
+
+                    return _buildSessionTile(context, ref, session, activity);
+                  },
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator(color: AppTheme.primaryGlow)),
+              error: (err, stack) => Center(child: Text('Error loading history: $err')),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGapTile(BuildContext context, WidgetRef ref, TimeGap gap) {
+    final startStr = DateFormat('jm').format(gap.startTime);
+    final endStr = DateFormat('jm').format(gap.endTime);
+    final durationStr = gap.durationMinutes >= 60
+        ? '${gap.durationMinutes ~/ 60}h ${gap.durationMinutes % 60}m'
+        : '${gap.durationMinutes}m';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: AppTheme.surface.withOpacity(0.4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: AppTheme.border.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orangeAccent.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.hourglass_empty_rounded,
+                color: Colors.orangeAccent,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Untracked Time Gap',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$startStr - $endStr • $durationStr',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryGlow.withOpacity(0.15),
+                foregroundColor: AppTheme.primaryGlow,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              );
-
-              return _buildSessionTile(context, ref, session, activity);
-            },
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator(color: AppTheme.primaryGlow)),
-        error: (err, stack) => Center(child: Text('Error loading history: $err')),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              onPressed: () {
+                _showManualLogDialog(
+                  context,
+                  ref,
+                  initialDateTime: gap.startTime,
+                  initialDuration: gap.durationMinutes,
+                );
+              },
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Fill Gap', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -210,11 +445,18 @@ class SessionHistoryList extends ConsumerWidget {
     );
   }
 
-  void _showManualLogDialog(BuildContext context, WidgetRef ref) {
+  void _showManualLogDialog(
+    BuildContext context,
+    WidgetRef ref, {
+    DateTime? initialDateTime,
+    int? initialDuration,
+  }) {
     showDialog(
       context: context,
       builder: (context) {
         return ManualLogDialog(
+          initialDateTime: initialDateTime,
+          initialDuration: initialDuration,
           onSave: (activityId, startTime, durationMinutes, notes) {
             ref.read(sessionControllerProvider.notifier).createManualSession(
               activityId: activityId,
@@ -231,6 +473,8 @@ class SessionHistoryList extends ConsumerWidget {
 
 class ManualLogDialog extends StatefulWidget {
   final String? initialActivityId;
+  final DateTime? initialDateTime;
+  final int? initialDuration;
   final void Function(
     String activityId,
     DateTime startTime,
@@ -238,7 +482,12 @@ class ManualLogDialog extends StatefulWidget {
     String? notes,
   ) onSave;
 
-  const ManualLogDialog({required this.onSave, this.initialActivityId});
+  const ManualLogDialog({
+    required this.onSave,
+    this.initialActivityId,
+    this.initialDateTime,
+    this.initialDuration,
+  });
 
   @override
   State<ManualLogDialog> createState() => ManualLogDialogState();
@@ -247,10 +496,20 @@ class ManualLogDialog extends StatefulWidget {
 class ManualLogDialogState extends State<ManualLogDialog> {
   final _formKey = GlobalKey<FormState>();
   String? _selectedActivityId;
-  DateTime _startDate = DateTime.now();
-  TimeOfDay _startTime = TimeOfDay.now();
-  int _duration = 30; // 30 mins default
+  late DateTime _startDate;
+  late TimeOfDay _startTime;
+  late int _duration;
   String? _notes;
+
+  @override
+  void initState() {
+    super.initState();
+    _startDate = widget.initialDateTime ?? DateTime.now();
+    _startTime = widget.initialDateTime != null
+        ? TimeOfDay.fromDateTime(widget.initialDateTime!)
+        : TimeOfDay.now();
+    _duration = widget.initialDuration ?? 30;
+  }
 
   @override
   Widget build(BuildContext context) {

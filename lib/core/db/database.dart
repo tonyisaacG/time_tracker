@@ -53,7 +53,7 @@ class Sessions extends Table {
 
 class Appointments extends Table {
   TextColumn get id => text()();
-  TextColumn get activityId => text().references(Activities, #id)();
+  TextColumn get activityId => text().nullable().references(Activities, #id)();
   TextColumn get title => text()();
   DateTimeColumn get startTime => dateTime()();
   IntColumn get durationMinutes => integer()();
@@ -72,7 +72,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? _openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration {
@@ -94,6 +94,15 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 5) {
           await m.createTable(appointments);
+        }
+        if (from < 6) {
+          await customStatement('ALTER TABLE appointments RENAME TO appointments_old');
+          await m.createTable(appointments);
+          await customStatement(
+            'INSERT INTO appointments (id, activity_id, title, start_time, duration_minutes, recurrence_type, recurrence_days, is_enabled, created_at, updated_at) '
+            'SELECT id, activity_id, title, start_time, duration_minutes, recurrence_type, recurrence_days, is_enabled, created_at, updated_at FROM appointments_old'
+          );
+          await customStatement('DROP TABLE appointments_old');
         }
       },
     );

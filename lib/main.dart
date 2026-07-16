@@ -9,6 +9,11 @@ import 'package:tracker_time/features/report/presentation/report_screen.dart';
 import 'package:tracker_time/features/settings/presentation/settings_screen.dart';
 import 'package:tracker_time/features/activity/application/activity_providers.dart';
 import 'package:tracker_time/core/db/database.dart';
+import 'package:tracker_time/features/schedule/presentation/schedule_screen.dart';
+import 'package:tracker_time/core/services/notification_service.dart';
+
+import 'package:tracker_time/features/schedule/application/schedule_providers.dart';
+import 'package:tracker_time/features/session/application/timer_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,9 +21,51 @@ void main() async {
   // Eagerly initialize device ID on launch
   await DeviceIdUtil.getOrCreateDeviceId();
 
+  // Initialize local notifications & timezone scheduler
+  final notificationService = NotificationService();
+  await notificationService.init();
+  await notificationService.requestPermissions();
+
   final container = ProviderContainer();
   // Check and insert preset activities
   await _prepopulatePresetActivities(container);
+
+  // Helper to handle notification start tracking action
+  Future<void> handleStartTracking(String appointmentId) async {
+    try {
+      final repo = container.read(appointmentRepositoryProvider);
+      final appt = await repo.getAppointmentById(appointmentId);
+      if (appt != null) {
+        final activityId = appt.activityId ?? 'preset-free-session';
+        await container.read(timerControllerProvider.notifier).startTimer(
+          activityId,
+          notes: 'Scheduled: ${appt.title}',
+        );
+        container.read(navigationProvider.notifier).state = 0; // Switch to Timer tab
+      }
+    } catch (e) {
+      debugPrint("Error handling start tracking action: $e");
+    }
+  }
+
+  // Listen to incoming notification actions when app is running
+  notificationService.onActionClick.listen((action) {
+    if (action.actionId == 'start_tracking' && action.payload != null) {
+      handleStartTracking(action.payload!);
+    }
+  });
+
+  // Handle launch from notification action
+  final launchDetails = await notificationService.getLaunchDetails();
+  if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
+    final response = launchDetails.notificationResponse;
+    if (response != null && response.actionId == 'start_tracking' && response.payload != null) {
+      // Delay slightly to allow Flutter app structure to build fully before starting timer
+      Future.delayed(const Duration(milliseconds: 500), () {
+        handleStartTracking(response.payload!);
+      });
+    }
+  }
 
   runApp(
     UncontrolledProviderScope(
@@ -170,6 +217,7 @@ class MainNavigationScreen extends ConsumerWidget {
   static const List<Widget> _screens = [
     TimerDashboard(),
     ActivityManageScreen(),
+    ScheduleScreen(),
     ReportScreen(),
     SettingsScreen(),
   ];
@@ -214,6 +262,11 @@ class MainNavigationScreen extends ConsumerWidget {
                   label: Text('Activities'),
                 ),
                 NavigationRailDestination(
+                  icon: Icon(Icons.calendar_today_outlined),
+                  selectedIcon: Icon(Icons.calendar_today_rounded),
+                  label: Text('Schedule'),
+                ),
+                NavigationRailDestination(
                   icon: Icon(Icons.bar_chart_outlined),
                   selectedIcon: Icon(Icons.bar_chart_rounded),
                   label: Text('Reports'),
@@ -248,6 +301,11 @@ class MainNavigationScreen extends ConsumerWidget {
                   icon: Icon(Icons.category_outlined),
                   selectedIcon: Icon(Icons.category_rounded),
                   label: 'Activities',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.calendar_today_outlined),
+                  selectedIcon: Icon(Icons.calendar_today_rounded),
+                  label: 'Schedule',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.bar_chart_outlined),
