@@ -366,39 +366,34 @@ class _ActivityFormDialogState extends State<_ActivityFormDialog> {
             const SizedBox(height: 16),
             const Text('Color Preset', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
             const SizedBox(height: 8),
-            SizedBox(
-              height: 48,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: AppTheme.activityColors.length,
-                itemBuilder: (context, idx) {
-                  final col = AppTheme.activityColors[idx];
-                  final isSelected = col.value == _selectedColorVal;
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedColorVal = col.value;
-                      });
-                    },
-                    child: Container(
-                      width: 38,
-                      height: 38,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: col,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isSelected ? Colors.white : Colors.transparent,
-                          width: 2.5,
-                        ),
-                        boxShadow: isSelected
-                            ? [BoxShadow(color: col.withOpacity(0.5), blurRadius: 8, spreadRadius: 1)]
-                            : null,
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: AppTheme.activityColors.map((col) {
+                final isSelected = col.value == _selectedColorVal;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedColorVal = col.value;
+                    });
+                  },
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: col,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSelected ? Colors.white : Colors.transparent,
+                        width: 2.5,
                       ),
+                      boxShadow: isSelected
+                          ? [BoxShadow(color: col.withOpacity(0.5), blurRadius: 8, spreadRadius: 1)]
+                          : null,
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              }).toList(),
             ),
             const SizedBox(height: 16),
             Row(
