@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:tracker_time/core/theme/app_theme.dart';
 import 'package:tracker_time/core/db/database.dart';
+import 'package:tracker_time/features/session/application/session_providers.dart';
 import '../application/activity_providers.dart';
 
 class ActivityManageScreen extends ConsumerStatefulWidget {
@@ -208,11 +210,24 @@ class _ActivityManageScreenState extends ConsumerState<ActivityManageScreen> {
                       color: AppTheme.textSecondary,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, color: Color(0xffef4444), size: 20),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed: () => _confirmDelete(context, act),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.notes_rounded, color: AppTheme.textSecondary, size: 20),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: 'View Session Notes',
+                        onPressed: () => _showNotesHistory(context, act),
+                      ),
+                      const SizedBox(width: 12),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, color: Color(0xffef4444), size: 20),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => _confirmDelete(context, act),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -220,6 +235,19 @@ class _ActivityManageScreenState extends ConsumerState<ActivityManageScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showNotesHistory(BuildContext context, Activity act) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return _ActivityNotesBottomSheet(activity: act);
+      },
     );
   }
 
@@ -672,6 +700,168 @@ class _ActivityFormDialogState extends State<_ActivityFormDialog> {
           },
         );
       },
+    );
+  }
+}
+
+class _ActivityNotesBottomSheet extends ConsumerWidget {
+  final Activity activity;
+
+  const _ActivityNotesBottomSheet({required this.activity});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sessionsAsync = ref.watch(allSessionsProvider);
+    final color = Color(activity.color);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    AppTheme.activityIcons[activity.icon] ?? Icons.category_rounded,
+                    color: color,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        activity.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      const Text(
+                        'Session History & Notes Log',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Divider(color: AppTheme.border),
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 350),
+              child: sessionsAsync.when(
+                data: (sessions) {
+                  final filtered = sessions.where((s) => s.activityId == activity.id && s.endTime != null && !s.isDeleted).toList();
+                  filtered.sort((a, b) => b.startTime.compareTo(a.startTime));
+
+                  if (filtered.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 32),
+                      child: Center(
+                        child: Text(
+                          'No tracked sessions for this activity yet.',
+                          style: TextStyle(color: AppTheme.textSecondary),
+                        ),
+                      ),
+                    );
+                  }
+
+                  final totalMinutes = filtered.fold(0, (sum, s) => sum + s.durationMinutes);
+                  final totalHoursStr = (totalMinutes / 60.0).toStringAsFixed(1);
+
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          'Total tracked: ${totalHoursStr}h (${totalMinutes} mins)',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: color),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final session = filtered[index];
+                            final dateStr = DateFormat('EEE, MMM d, y').format(session.startTime);
+                            final timeStr = DateFormat('jm').format(session.startTime);
+                            final durationStr = '${session.durationMinutes}m';
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          '$dateStr at $timeStr',
+                                          style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                        ),
+                                        Text(
+                                          durationStr,
+                                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      (session.notes != null && session.notes!.trim().isNotEmpty)
+                                          ? session.notes!
+                                          : 'No notes entered for this session',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: (session.notes != null && session.notes!.trim().isNotEmpty)
+                                            ? AppTheme.textPrimary
+                                            : AppTheme.textMuted,
+                                        fontStyle: (session.notes != null && session.notes!.trim().isNotEmpty)
+                                            ? FontStyle.normal
+                                            : FontStyle.italic,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text('Error loading notes: $e')),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
