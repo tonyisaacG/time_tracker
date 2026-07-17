@@ -60,6 +60,7 @@ class Appointments extends Table {
   TextColumn get recurrenceType => text()(); // 'once', 'weekly', 'monthly'
   TextColumn get recurrenceDays => text().nullable()(); // JSON list e.g. '[1, 4]'
   BoolColumn get isEnabled => boolean().withDefault(const Constant(true))();
+  BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
@@ -72,7 +73,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? _openConnection());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration {
@@ -103,6 +104,9 @@ class AppDatabase extends _$AppDatabase {
             'SELECT id, activity_id, title, start_time, duration_minutes, recurrence_type, recurrence_days, is_enabled, created_at, updated_at FROM appointments_old'
           );
           await customStatement('DROP TABLE appointments_old');
+        }
+        if (from < 7) {
+          await m.addColumn(appointments, appointments.isArchived);
         }
       },
     );

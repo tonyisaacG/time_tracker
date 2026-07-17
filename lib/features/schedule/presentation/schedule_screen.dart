@@ -7,12 +7,19 @@ import 'package:tracker_time/core/db/database.dart';
 import 'package:tracker_time/features/activity/application/activity_providers.dart';
 import '../application/schedule_providers.dart';
 
-class ScheduleScreen extends ConsumerWidget {
+class ScheduleScreen extends ConsumerStatefulWidget {
   const ScheduleScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final appointmentsAsync = ref.watch(allAppointmentsProvider);
+  ConsumerState<ScheduleScreen> createState() => _ScheduleScreenState();
+}
+
+class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
+  bool _showArchived = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final appointmentsAsync = ref.watch(_showArchived ? archivedAppointmentsProvider : activeAppointmentsProvider);
     final activitiesAsync = ref.watch(activeActivitiesProvider);
 
     return Scaffold(
@@ -21,6 +28,26 @@ class ScheduleScreen extends ConsumerWidget {
         title: const Text('Schedule', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          Row(
+            children: [
+              const Text(
+                'Show Archived',
+                style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+              ),
+              Switch(
+                value: _showArchived,
+                onChanged: (val) {
+                  setState(() {
+                    _showArchived = val;
+                  });
+                },
+                activeColor: AppTheme.primaryGlow,
+              ),
+            ],
+          ),
+          const SizedBox(width: 16),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppTheme.primaryGlow,
@@ -45,22 +72,23 @@ class ScheduleScreen extends ConsumerWidget {
                       color: AppTheme.textSecondary.withOpacity(0.05),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.calendar_today_rounded,
+                    child: Icon(
+                      _showArchived ? Icons.archive_rounded : Icons.calendar_today_rounded,
                       size: 64,
                       color: AppTheme.textMuted,
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'No scheduled meetings or courses',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                  Text(
+                    _showArchived ? 'No archived schedules' : 'No scheduled meetings or courses',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Tap the button below to schedule reminders.',
-                    style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                  ),
+                  if (!_showArchived)
+                    const Text(
+                      'Tap the button below to schedule reminders.',
+                      style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                    ),
                 ],
               ),
             );
@@ -190,21 +218,38 @@ class ScheduleScreen extends ConsumerWidget {
             ),
             Column(
               children: [
-                Transform.scale(
-                  scale: 0.8,
-                  child: Switch(
-                    value: appt.isEnabled,
-                    activeColor: color,
-                    onChanged: (val) {
-                      ref.read(appointmentControllerProvider.notifier).toggleEnabled(appt, val);
-                    },
+                if (!appt.isArchived)
+                  Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: appt.isEnabled,
+                      activeColor: color,
+                      onChanged: (val) {
+                        ref.read(appointmentControllerProvider.notifier).toggleEnabled(appt, val);
+                      },
+                    ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.textMuted, size: 20),
-                  onPressed: () {
-                    _showDeleteConfirmation(context, ref, appt.id);
-                  },
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        appt.isArchived ? Icons.unarchive_rounded : Icons.archive_rounded,
+                        color: AppTheme.textMuted,
+                        size: 20,
+                      ),
+                      tooltip: appt.isArchived ? 'Restore Schedule' : 'Archive Schedule',
+                      onPressed: () {
+                        ref.read(appointmentControllerProvider.notifier).toggleArchived(appt, !appt.isArchived);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.textMuted, size: 20),
+                      onPressed: () {
+                        _showDeleteConfirmation(context, ref, appt.id);
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),

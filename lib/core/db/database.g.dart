@@ -1501,6 +1501,21 @@ class $AppointmentsTable extends Appointments
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _isArchivedMeta = const VerificationMeta(
+    'isArchived',
+  );
+  @override
+  late final GeneratedColumn<bool> isArchived = GeneratedColumn<bool>(
+    'is_archived',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_archived" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1533,6 +1548,7 @@ class $AppointmentsTable extends Appointments
     recurrenceType,
     recurrenceDays,
     isEnabled,
+    isArchived,
     createdAt,
     updatedAt,
   ];
@@ -1612,6 +1628,12 @@ class $AppointmentsTable extends Appointments
         isEnabled.isAcceptableOrUnknown(data['is_enabled']!, _isEnabledMeta),
       );
     }
+    if (data.containsKey('is_archived')) {
+      context.handle(
+        _isArchivedMeta,
+        isArchived.isAcceptableOrUnknown(data['is_archived']!, _isArchivedMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -1669,6 +1691,10 @@ class $AppointmentsTable extends Appointments
         DriftSqlType.bool,
         data['${effectivePrefix}is_enabled'],
       )!,
+      isArchived: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_archived'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -1695,6 +1721,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
   final String recurrenceType;
   final String? recurrenceDays;
   final bool isEnabled;
+  final bool isArchived;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Appointment({
@@ -1706,6 +1733,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     required this.recurrenceType,
     this.recurrenceDays,
     required this.isEnabled,
+    required this.isArchived,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -1724,6 +1752,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       map['recurrence_days'] = Variable<String>(recurrenceDays);
     }
     map['is_enabled'] = Variable<bool>(isEnabled);
+    map['is_archived'] = Variable<bool>(isArchived);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -1743,6 +1772,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
           ? const Value.absent()
           : Value(recurrenceDays),
       isEnabled: Value(isEnabled),
+      isArchived: Value(isArchived),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -1762,6 +1792,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       recurrenceType: serializer.fromJson<String>(json['recurrenceType']),
       recurrenceDays: serializer.fromJson<String?>(json['recurrenceDays']),
       isEnabled: serializer.fromJson<bool>(json['isEnabled']),
+      isArchived: serializer.fromJson<bool>(json['isArchived']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -1778,6 +1809,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
       'recurrenceType': serializer.toJson<String>(recurrenceType),
       'recurrenceDays': serializer.toJson<String?>(recurrenceDays),
       'isEnabled': serializer.toJson<bool>(isEnabled),
+      'isArchived': serializer.toJson<bool>(isArchived),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -1792,6 +1824,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     String? recurrenceType,
     Value<String?> recurrenceDays = const Value.absent(),
     bool? isEnabled,
+    bool? isArchived,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Appointment(
@@ -1805,6 +1838,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
         ? recurrenceDays.value
         : this.recurrenceDays,
     isEnabled: isEnabled ?? this.isEnabled,
+    isArchived: isArchived ?? this.isArchived,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -1826,6 +1860,9 @@ class Appointment extends DataClass implements Insertable<Appointment> {
           ? data.recurrenceDays.value
           : this.recurrenceDays,
       isEnabled: data.isEnabled.present ? data.isEnabled.value : this.isEnabled,
+      isArchived: data.isArchived.present
+          ? data.isArchived.value
+          : this.isArchived,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -1842,6 +1879,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
           ..write('recurrenceType: $recurrenceType, ')
           ..write('recurrenceDays: $recurrenceDays, ')
           ..write('isEnabled: $isEnabled, ')
+          ..write('isArchived: $isArchived, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1858,6 +1896,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
     recurrenceType,
     recurrenceDays,
     isEnabled,
+    isArchived,
     createdAt,
     updatedAt,
   );
@@ -1873,6 +1912,7 @@ class Appointment extends DataClass implements Insertable<Appointment> {
           other.recurrenceType == this.recurrenceType &&
           other.recurrenceDays == this.recurrenceDays &&
           other.isEnabled == this.isEnabled &&
+          other.isArchived == this.isArchived &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -1886,6 +1926,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
   final Value<String> recurrenceType;
   final Value<String?> recurrenceDays;
   final Value<bool> isEnabled;
+  final Value<bool> isArchived;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -1898,6 +1939,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     this.recurrenceType = const Value.absent(),
     this.recurrenceDays = const Value.absent(),
     this.isEnabled = const Value.absent(),
+    this.isArchived = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1911,6 +1953,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     required String recurrenceType,
     this.recurrenceDays = const Value.absent(),
     this.isEnabled = const Value.absent(),
+    this.isArchived = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -1930,6 +1973,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     Expression<String>? recurrenceType,
     Expression<String>? recurrenceDays,
     Expression<bool>? isEnabled,
+    Expression<bool>? isArchived,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -1943,6 +1987,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
       if (recurrenceType != null) 'recurrence_type': recurrenceType,
       if (recurrenceDays != null) 'recurrence_days': recurrenceDays,
       if (isEnabled != null) 'is_enabled': isEnabled,
+      if (isArchived != null) 'is_archived': isArchived,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -1958,6 +2003,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     Value<String>? recurrenceType,
     Value<String?>? recurrenceDays,
     Value<bool>? isEnabled,
+    Value<bool>? isArchived,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -1971,6 +2017,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
       recurrenceType: recurrenceType ?? this.recurrenceType,
       recurrenceDays: recurrenceDays ?? this.recurrenceDays,
       isEnabled: isEnabled ?? this.isEnabled,
+      isArchived: isArchived ?? this.isArchived,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -2004,6 +2051,9 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
     if (isEnabled.present) {
       map['is_enabled'] = Variable<bool>(isEnabled.value);
     }
+    if (isArchived.present) {
+      map['is_archived'] = Variable<bool>(isArchived.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -2027,6 +2077,7 @@ class AppointmentsCompanion extends UpdateCompanion<Appointment> {
           ..write('recurrenceType: $recurrenceType, ')
           ..write('recurrenceDays: $recurrenceDays, ')
           ..write('isEnabled: $isEnabled, ')
+          ..write('isArchived: $isArchived, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -3040,6 +3091,7 @@ typedef $$AppointmentsTableCreateCompanionBuilder =
       required String recurrenceType,
       Value<String?> recurrenceDays,
       Value<bool> isEnabled,
+      Value<bool> isArchived,
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -3054,6 +3106,7 @@ typedef $$AppointmentsTableUpdateCompanionBuilder =
       Value<String> recurrenceType,
       Value<String?> recurrenceDays,
       Value<bool> isEnabled,
+      Value<bool> isArchived,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -3124,6 +3177,11 @@ class $$AppointmentsTableFilterComposer
 
   ColumnFilters<bool> get isEnabled => $composableBuilder(
     column: $table.isEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3205,6 +3263,11 @@ class $$AppointmentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -3275,6 +3338,11 @@ class $$AppointmentsTableAnnotationComposer
   GeneratedColumn<bool> get isEnabled =>
       $composableBuilder(column: $table.isEnabled, builder: (column) => column);
 
+  GeneratedColumn<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -3341,6 +3409,7 @@ class $$AppointmentsTableTableManager
                 Value<String> recurrenceType = const Value.absent(),
                 Value<String?> recurrenceDays = const Value.absent(),
                 Value<bool> isEnabled = const Value.absent(),
+                Value<bool> isArchived = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -3353,6 +3422,7 @@ class $$AppointmentsTableTableManager
                 recurrenceType: recurrenceType,
                 recurrenceDays: recurrenceDays,
                 isEnabled: isEnabled,
+                isArchived: isArchived,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -3367,6 +3437,7 @@ class $$AppointmentsTableTableManager
                 required String recurrenceType,
                 Value<String?> recurrenceDays = const Value.absent(),
                 Value<bool> isEnabled = const Value.absent(),
+                Value<bool> isArchived = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -3379,6 +3450,7 @@ class $$AppointmentsTableTableManager
                 recurrenceType: recurrenceType,
                 recurrenceDays: recurrenceDays,
                 isEnabled: isEnabled,
+                isArchived: isArchived,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

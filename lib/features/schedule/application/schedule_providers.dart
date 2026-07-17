@@ -15,6 +15,14 @@ final allAppointmentsProvider = StreamProvider<List<Appointment>>((ref) {
   return ref.watch(appointmentRepositoryProvider).watchAllAppointments();
 });
 
+final activeAppointmentsProvider = StreamProvider<List<Appointment>>((ref) {
+  return ref.watch(appointmentRepositoryProvider).watchActiveAppointments();
+});
+
+final archivedAppointmentsProvider = StreamProvider<List<Appointment>>((ref) {
+  return ref.watch(appointmentRepositoryProvider).watchArchivedAppointments();
+});
+
 class AppointmentController extends StateNotifier<AsyncValue<void>> {
   final AppointmentRepository _repository;
   final NotificationService _notificationService = NotificationService();
@@ -43,6 +51,7 @@ class AppointmentController extends StateNotifier<AsyncValue<void>> {
         recurrenceType: recurrenceType,
         recurrenceDays: recurrenceDays.isNotEmpty ? jsonEncode(recurrenceDays) : null,
         isEnabled: isEnabled,
+        isArchived: false,
         createdAt: now,
         updatedAt: now,
       );
@@ -68,7 +77,7 @@ class AppointmentController extends StateNotifier<AsyncValue<void>> {
       final updated = appt.copyWith(updatedAt: DateTime.now());
       await _repository.updateAppointment(updated);
 
-      if (updated.isEnabled) {
+      if (updated.isEnabled && !updated.isArchived) {
         final List<int> days = updated.recurrenceDays != null
             ? List<int>.from(jsonDecode(updated.recurrenceDays!))
             : [];
@@ -88,6 +97,10 @@ class AppointmentController extends StateNotifier<AsyncValue<void>> {
 
   Future<void> toggleEnabled(Appointment appt, bool enabled) async {
     await updateAppointment(appt.copyWith(isEnabled: enabled));
+  }
+
+  Future<void> toggleArchived(Appointment appt, bool archived) async {
+    await updateAppointment(appt.copyWith(isArchived: archived));
   }
 
   Future<void> deleteAppointment(String id) async {

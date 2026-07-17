@@ -15,6 +15,22 @@ class AppointmentRepositoryImpl implements AppointmentRepository {
   }
 
   @override
+  Stream<List<Appointment>> watchActiveAppointments() {
+    return (_db.select(_db.appointments)
+          ..where((t) => t.isArchived.equals(false))
+          ..orderBy([(t) => OrderingTerm(expression: t.startTime)]))
+        .watch();
+  }
+
+  @override
+  Stream<List<Appointment>> watchArchivedAppointments() {
+    return (_db.select(_db.appointments)
+          ..where((t) => t.isArchived.equals(true))
+          ..orderBy([(t) => OrderingTerm(expression: t.startTime)]))
+        .watch();
+  }
+
+  @override
   Future<List<Appointment>> getAllAppointments() {
     return (_db.select(_db.appointments)
           ..orderBy([(t) => OrderingTerm(expression: t.startTime)]))
