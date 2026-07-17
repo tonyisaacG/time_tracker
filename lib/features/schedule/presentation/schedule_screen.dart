@@ -125,9 +125,9 @@ class ScheduleScreen extends ConsumerWidget {
             default: return '';
           }
         }).join(', ');
-        recurrenceStr = 'Weekly ($dayNames)';
+        recurrenceStr = 'Custom ($dayNames)';
       } else {
-        recurrenceStr = 'Weekly';
+        recurrenceStr = 'Custom';
       }
     } else if (appt.recurrenceType == 'monthly') {
       recurrenceStr = 'Monthly';
@@ -410,7 +410,7 @@ class _AppointmentFormDialogState extends State<_AppointmentFormDialog> {
               value: _recurrenceType,
               items: const [
                 DropdownMenuItem(value: 'once', child: Text('Once (One-off)')),
-                DropdownMenuItem(value: 'weekly', child: Text('Weekly (Repeating)')),
+                DropdownMenuItem(value: 'weekly', child: Text('Custom Days of Week')),
                 DropdownMenuItem(value: 'monthly', child: Text('Monthly (Repeating)')),
               ],
               onChanged: (val) {
