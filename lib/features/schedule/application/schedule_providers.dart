@@ -31,6 +31,7 @@ class AppointmentController extends StateNotifier<AsyncValue<void>> {
 
   Future<void> createAppointment({
     required String title,
+    String? notes,
     String? activityId,
     required DateTime startTime,
     required int durationMinutes,
@@ -46,6 +47,7 @@ class AppointmentController extends StateNotifier<AsyncValue<void>> {
         id: id,
         activityId: activityId,
         title: title,
+        notes: notes,
         startTime: startTime,
         durationMinutes: durationMinutes,
         recurrenceType: recurrenceType,

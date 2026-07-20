@@ -186,6 +186,15 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (appt.notes != null && appt.notes!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      appt.notes!,
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, fontStyle: FontStyle.italic),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Wrap(
                     crossAxisAlignment: WrapCrossAlignment.center,
@@ -291,10 +300,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         return _AppointmentFormDialog(
           activities: activities,
           appointment: appt,
-          onSave: (title, activityId, startTime, durationMinutes, recurrenceType, recurrenceDays) {
+          onSave: (title, notes, activityId, startTime, durationMinutes, recurrenceType, recurrenceDays) {
             final controller = ref.read(appointmentControllerProvider.notifier);
             controller.createAppointment(
               title: title,
+              notes: notes,
               activityId: activityId,
               startTime: startTime,
               durationMinutes: durationMinutes,
@@ -313,6 +323,7 @@ class _AppointmentFormDialog extends StatefulWidget {
   final Appointment? appointment;
   final void Function(
     String title,
+    String? notes,
     String? activityId,
     DateTime startTime,
     int durationMinutes,
@@ -333,6 +344,7 @@ class _AppointmentFormDialog extends StatefulWidget {
 class _AppointmentFormDialogState extends State<_AppointmentFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late String _title;
+  late String _notes;
   late String? _selectedActivityId;
   late DateTime _startTime;
   late int _durationMinutes;
@@ -344,6 +356,7 @@ class _AppointmentFormDialogState extends State<_AppointmentFormDialog> {
     super.initState();
     final appt = widget.appointment;
     _title = appt?.title ?? '';
+    _notes = appt?.notes ?? '';
     _selectedActivityId = appt?.activityId;
     _startTime = appt?.startTime ?? DateTime.now().add(const Duration(minutes: 30));
     _durationMinutes = appt?.durationMinutes ?? 60;
@@ -351,6 +364,23 @@ class _AppointmentFormDialogState extends State<_AppointmentFormDialog> {
     _recurrenceDays = appt?.recurrenceDays != null
         ? List<int>.from(jsonDecode(appt!.recurrenceDays!))
         : [];
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? date = await showDatePicker(
+      context: context,
+      initialDate: _startTime,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+    );
+    if (date != null) {
+      setState(() {
+        _startTime = DateTime(
+          date.year, date.month, date.day,
+          _startTime.hour, _startTime.minute,
+        );
+      });
+    }
   }
 
   Future<void> _selectTime(BuildContext context) async {
@@ -391,6 +421,16 @@ class _AppointmentFormDialogState extends State<_AppointmentFormDialog> {
               validator: (val) => val == null || val.trim().isEmpty ? 'Please enter a title' : null,
               onSaved: (val) => _title = val!.trim(),
             ),
+            const SizedBox(height: 12),
+            TextFormField(
+              initialValue: _notes,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Notes / Details (Optional)',
+                hintText: 'e.g. Chapter 3, Zoom link, or agenda notes...',
+              ),
+              onSaved: (val) => _notes = val != null ? val.trim() : '',
+            ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String?>(
               decoration: const InputDecoration(labelText: 'Linked Activity'),
@@ -424,15 +464,35 @@ class _AppointmentFormDialogState extends State<_AppointmentFormDialog> {
               },
             ),
             const SizedBox(height: 16),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Start Time', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-              subtitle: Text(
-                DateFormat('jm').format(_startTime),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              trailing: const Icon(Icons.access_time_rounded, color: AppTheme.primaryGlow),
-              onTap: () => _selectTime(context),
+            // Date + Time pickers
+            Row(
+              children: [
+                Expanded(
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Date', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                    subtitle: Text(
+                      DateFormat('EEE, MMM d yyyy').format(_startTime),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    trailing: const Icon(Icons.calendar_month_rounded, color: AppTheme.primaryGlow),
+                    onTap: () => _selectDate(context),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Time', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                    subtitle: Text(
+                      DateFormat('h:mm a').format(_startTime),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    trailing: const Icon(Icons.access_time_rounded, color: AppTheme.primaryGlow),
+                    onTap: () => _selectTime(context),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             const Text('Duration (Minutes)', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
@@ -507,6 +567,7 @@ class _AppointmentFormDialogState extends State<_AppointmentFormDialog> {
               }
               widget.onSave(
                 _title,
+                _notes.isNotEmpty ? _notes : null,
                 _selectedActivityId,
                 _startTime,
                 _durationMinutes,

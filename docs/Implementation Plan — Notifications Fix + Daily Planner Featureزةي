@@ -1,0 +1,237 @@
+# Implementation Plan — Notifications Fix + Daily Planner Feature
+
+> **Project**: Time Investment Tracker (`TrackerTime`)
+> **DB Migration**: v7 → v8
+> **Last Updated**: July 2026
+
+---
+
+## Part 1 — 🐛 Bug Fix: Notifications Not Firing
+
+### Root Cause Analysis
+
+**The bug is in [`schedule_screen.dart`](file:///e:/2026/MyBigProjects_SimpleLib/TrackerTime/lib/features/schedule/presentation/schedule_screen.dart) — the form has no date picker, only a time picker.**
+
+```dart
+// Line 348 — _startTime is initialized as "now + 30 min"
+_startTime = appt?.startTime ?? DateTime.now().add(const Duration(minutes: 30));
+
+// Line 356 — _selectTime only picks hour:minute, never changes the DATE
+Future<void> _selectTime(BuildContext context) async {
+  final TimeOfDay? time = await showTimePicker(...);
+  if (time != null) {
+    setState(() {
+      _startTime = DateTime(
+        _startTime.year, _startTime.month, _startTime.day,  // ← DATE STAYS TODAY
+        time.hour, time.minute,
+      );
+    });
+  }
+}
+```
+
+**Result:** If the user picks a time like `9:00 AM` after `9:00 AM` has already passed today, `scheduledDate.isAfter(now)` in [`notification_service.dart`](file:///e:/2026/MyBigProjects_SimpleLib/TrackerTime/lib/core/services/notification_service.dart) Line 142 returns `false` → notification is **silently skipped**.
+
+**Secondary cause:** Android 12+ requires `SCHEDULE_EXACT_ALARM` permission in `AndroidManifest.xml` for `exactAllowWhileIdle` to work.
+
+---
+
+### Fix 1A — Add Date Picker to Schedule Form
+
+#### [MODIFY] [schedule_screen.dart](file:///e:/2026/MyBigProjects_SimpleLib/TrackerTime/lib/features/schedule/presentation/schedule_screen.dart)
+
+Replace the time-only `ListTile` with a two-row date + time picker:
+
+```
+┌──────────────────────────────────────────┐
+│ Start Date    [Mon, July 21 2026]  📅    │  ← showDatePicker
+│ Start Time    [09:00 AM]           🕘    │  ← showTimePicker (existing)
+└──────────────────────────────────────────┘
+```
+
+- `_selectDate()` → calls `showDatePicker` with `firstDate: DateTime.now()` (prevents past dates for 'once' appointments).
+- After date+time both picked → the notification will always be in the future.
+
+### Fix 1B — Add Fallback to `inexactAllowWhileIdle`
+
+#### [MODIFY] [notification_service.dart](file:///e:/2026/MyBigProjects_SimpleLib/TrackerTime/lib/core/services/notification_service.dart)
+
+Wrap every `zonedSchedule` call in a try-catch with an `inexactAllowWhileIdle` fallback (same pattern as TrackerMoney):
+
+```dart
+try {
+  await _localNotifications.zonedSchedule(
+    ...,
+    androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+  );
+} catch (_) {
+  await _localNotifications.zonedSchedule(
+    ...,
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+  );
+}
+```
+
+### Fix 1C — Android Manifest Permission
+
+#### [MODIFY] `android/app/src/main/AndroidManifest.xml`
+
+Add the exact alarm permission (required Android 12+):
+
+```xml
+<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+<uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+```
+
+And add `requestExactAlarmsPermission()` call in `NotificationService.requestPermissions()`.
+
+---
+
+## Part 2 — ✨ New Feature: Daily Planner (Day Blocks + Tasks)
+
+### Database — DB v7 → v8
+
+#### [MODIFY] [database.dart](file:///e:/2026/MyBigProjects_SimpleLib/TrackerTime/lib/core/db/database.dart)
+
+**New Table: `DayBlocks`** — Global day segment templates
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PK | UUID |
+| `name` | TEXT | e.g. "الصباح", "بعد الشغل" |
+| `icon` | TEXT | Icon key |
+| `color` | INTEGER | ARGB |
+| `sortOrder` | INTEGER | 0, 1, 2… |
+| `isArchived` | BOOLEAN | default false |
+| `createdAt` | DATETIME | — |
+| `updatedAt` | DATETIME | — |
+
+**New Table: `DayTasks`** — Per-date tasks inside a block
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PK | UUID |
+| `blockId` | TEXT FK → DayBlocks | Which block |
+| `activityId` | TEXT? FK → Activities | Optional timer link |
+| `date` | TEXT | `YYYY-MM-DD` — tasks are per-day |
+| `title` | TEXT | Task description |
+| `isCompleted` | BOOLEAN | default false |
+| `sortOrder` | INTEGER | Order within block |
+| `completedAt` | DATETIME? | Set when checked |
+| `createdAt` | DATETIME | — |
+| `updatedAt` | DATETIME | — |
+
+**Migration `from < 8`**:
+```dart
+if (from < 8) {
+  await m.createTable(dayBlocks);
+  await m.createTable(dayTasks);
+  // Seed 3 default blocks
+  await _seedDefaultBlocks(m);
+}
+```
+Default seeded blocks:
+- 🌅 الصباح (sortOrder: 0, amber)
+- 💼 وقت العمل (sortOrder: 1, blue)
+- 🌙 المساء (sortOrder: 2, indigo)
+
+---
+
+### New Feature Files Structure
+
+```
+lib/features/planner/
+├── domain/
+│   └── planner_repository.dart       # Interface
+├── infrastructure/
+│   └── planner_repository_impl.dart  # Drift implementation
+├── application/
+│   └── planner_providers.dart        # Riverpod providers
+└── presentation/
+    ├── daily_planner_screen.dart      # Main planner UI
+    └── block_manage_screen.dart       # Manage/reorder blocks
+```
+
+---
+
+### Planner Providers — `planner_providers.dart`
+
+```dart
+// Selected date (defaults to today)
+final plannerSelectedDateProvider = StateProvider<DateTime>((_) => DateTime.now());
+
+// Stream of blocks + their tasks for the selected date
+final plannerDayProvider = StreamProvider.family<List<BlockWithTasks>, String>(
+  (ref, dateStr) => ref.watch(plannerRepositoryProvider).watchBlocksWithTasks(dateStr),
+);
+```
+
+---
+
+### DailyPlannerScreen UI Layout
+
+```
+┌───────────────────────────────────────┐
+│  ‹   الاثنين، ٢١ يوليو ٢٠٢٦   ›     │  ← Date nav (arrows + swipe)
+├───────────────────────────────────────┤
+│                                       │
+│  ▌🌅 الصباح            [+ إضافة]     │  ← Block header (color left-border)
+│    ☐  قراءة ٣٠ دقيقة  [▶ القراءة]   │  ← task (▶ only if activityId set)
+│    ☑  تمارين  ──────────────────      │  ← completed = strikethrough
+│    ☐  مراجعة الأهداف                  │
+│                                       │
+│  ▌💼 وقت العمل          [+ إضافة]    │
+│    ☐  إنهاء الـ feature  [▶ البرمجة] │
+│    ☐  كود ريفيو                       │
+│                                       │
+│  ▌🌙 المساء             [+ إضافة]    │
+│    (فارغ — اضغط + لإضافة مهمة)       │
+│                                       │
+│          [⚙ إدارة البلوكات]           │
+└───────────────────────────────────────┘
+```
+
+**Key Interactions:**
+
+| Action | Result |
+|---|---|
+| Tap `‹` / `›` | Navigate to previous/next day |
+| Swipe left/right | Navigate days |
+| Tap `+ إضافة` | Bottom sheet: enter title + optional Activity picker |
+| Tap checkbox ☐ | Toggle done + strikethrough animation + sets `completedAt` |
+| Tap `▶` button | Start timer for linked Activity → switch to Timer tab (index 0) |
+| Long-press task | Popup menu: Edit / Delete |
+| Drag task handle | Reorder within block (updates `sortOrder`) |
+| Tap `⚙ إدارة البلوكات` | Open `BlockManageScreen` |
+
+---
+
+### Navigation — [MODIFY] [main.dart](file:///e:/2026/MyBigProjects_SimpleLib/TrackerTime/lib/main.dart)
+
+Add Planner as Tab 2 (between Activities and Schedule):
+
+```
+Tab 0: ⏱  Timer
+Tab 1: 📂  Activities
+Tab 2: 📋  Planner     ← NEW
+Tab 3: 📅  Schedule
+Tab 4: 📊  Reports
+Tab 5: ⚙  Settings
+```
+
+---
+
+## Verification Plan
+
+### Bug Fix Verification
+1. Open Schedule → add appointment at a time **already passed today** → save → confirm notification scheduled correctly (no silent skip).
+2. Test on Android 12+ device → confirm exact alarm fires or gracefully falls back to inexact.
+3. Toggle appointment off → confirm notification cancelled → toggle back on → confirm re-scheduled.
+
+### Daily Planner Verification
+1. Navigate to Planner tab → confirm 3 default blocks appear.
+2. Add task without activity → confirm no `▶` button.
+3. Add task linked to "البرمجة" → tap `▶` → confirm timer starts + app navigates to Timer tab.
+4. Check task → confirm strikethrough → navigate to yesterday → confirm that day is empty (tasks are per-date).
+5. Manage Blocks → add "الليل" block → confirm appears in planner immediately.
+6. Reorder tasks via drag → navigate away and back → confirm order persists.

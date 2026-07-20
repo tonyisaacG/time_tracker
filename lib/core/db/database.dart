@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/material.dart' show Color;
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
@@ -55,6 +56,7 @@ class Appointments extends Table {
   TextColumn get id => text()();
   TextColumn get activityId => text().nullable().references(Activities, #id)();
   TextColumn get title => text()();
+  TextColumn get notes => text().nullable()();
   DateTimeColumn get startTime => dateTime()();
   IntColumn get durationMinutes => integer()();
   TextColumn get recurrenceType => text()(); // 'once', 'weekly', 'monthly'
@@ -68,12 +70,45 @@ class Appointments extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [Activities, Sessions, Appointments])
+class DayBlocks extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get icon => text().withDefault(const Constant('tasks_todo'))();
+  IntColumn get color => integer()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class DayTasks extends Table {
+  TextColumn get id => text()();
+  TextColumn get blockId => text().references(DayBlocks, #id)();
+  TextColumn get activityId => text().nullable().references(Activities, #id)();
+  TextColumn get date => text()(); // 'YYYY-MM-DD'
+  TextColumn get title => text()();
+  TextColumn get notes => text().nullable()();
+  BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get reminderTime => dateTime().nullable()();
+  DateTimeColumn get completedAt => dateTime().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+
+@DriftDatabase(tables: [Activities, Sessions, Appointments, DayBlocks, DayTasks])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? _openConnection());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration {
@@ -81,6 +116,14 @@ class AppDatabase extends _$AppDatabase {
       beforeOpen: (details) async {
         // Enforce foreign keys
         await customStatement('PRAGMA foreign_keys = ON');
+        // Self-healing: Fix any corrupted string timestamps from previous v8 migration attempt
+        try {
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          await customStatement("UPDATE day_blocks SET created_at = $nowMs WHERE typeof(created_at) = 'text'");
+          await customStatement("UPDATE day_blocks SET updated_at = $nowMs WHERE typeof(updated_at) = 'text'");
+          await customStatement("UPDATE day_tasks SET created_at = $nowMs WHERE typeof(created_at) = 'text'");
+          await customStatement("UPDATE day_tasks SET updated_at = $nowMs WHERE typeof(updated_at) = 'text'");
+        } catch (_) {}
       },
       onUpgrade: (m, from, to) async {
         if (from < 2) {
@@ -107,6 +150,25 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 7) {
           await m.addColumn(appointments, appointments.isArchived);
+        }
+        if (from < 8) {
+          await m.createTable(dayBlocks);
+          await m.createTable(dayTasks);
+          // Seed 3 default day blocks (Drift stores DateTime as ms since epoch)
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          await customStatement(
+            "INSERT OR IGNORE INTO day_blocks (id, name, icon, color, sort_order, is_archived, created_at, updated_at) VALUES "
+            "('block-morning', 'الصباح', 'sunrise', ${const Color(0xfff59e0b).value}, 0, 0, $nowMs, $nowMs), "
+            "('block-work',    'وقت العمل', 'work', ${const Color(0xff3b82f6).value}, 1, 0, $nowMs, $nowMs), "
+            "('block-evening', 'المساء',   'sleep_relax', ${const Color(0xff8b5cf6).value}, 2, 0, $nowMs, $nowMs)"
+          );
+        }
+        if (from < 9) {
+          await m.addColumn(dayTasks, dayTasks.reminderTime);
+        }
+        if (from < 10) {
+          await m.addColumn(appointments, appointments.notes);
+          await m.addColumn(dayTasks, dayTasks.notes);
         }
       },
     );

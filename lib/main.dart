@@ -11,6 +11,7 @@ import 'package:tracker_time/features/activity/application/activity_providers.da
 import 'package:tracker_time/core/db/database.dart';
 import 'package:tracker_time/features/schedule/presentation/schedule_screen.dart';
 import 'package:tracker_time/core/services/notification_service.dart';
+import 'package:tracker_time/features/planner/presentation/daily_planner_screen.dart';
 
 import 'package:tracker_time/features/schedule/application/schedule_providers.dart';
 import 'package:tracker_time/features/session/application/timer_providers.dart';
@@ -217,6 +218,7 @@ class MainNavigationScreen extends ConsumerWidget {
   static const List<Widget> _screens = [
     TimerDashboard(),
     ActivityManageScreen(),
+    DailyPlannerScreen(),
     ScheduleScreen(),
     ReportScreen(),
     SettingsScreen(),
@@ -262,6 +264,11 @@ class MainNavigationScreen extends ConsumerWidget {
                   label: Text('Activities'),
                 ),
                 NavigationRailDestination(
+                  icon: Icon(Icons.checklist_rounded),
+                  selectedIcon: Icon(Icons.checklist_rounded),
+                  label: Text('Planner'),
+                ),
+                NavigationRailDestination(
                   icon: Icon(Icons.calendar_today_outlined),
                   selectedIcon: Icon(Icons.calendar_today_rounded),
                   label: Text('Schedule'),
@@ -301,6 +308,11 @@ class MainNavigationScreen extends ConsumerWidget {
                   icon: Icon(Icons.category_outlined),
                   selectedIcon: Icon(Icons.category_rounded),
                   label: 'Activities',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.checklist_rounded),
+                  selectedIcon: Icon(Icons.checklist_rounded),
+                  label: 'Planner',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.calendar_today_outlined),

@@ -78,9 +78,10 @@ class NotificationService {
   }
 
   Future<void> requestPermissions() async {
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+    final androidPlugin = _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.requestNotificationsPermission();
+    await androidPlugin?.requestExactAlarmsPermission();
   }
 
   Future<NotificationAppLaunchDetails?> getLaunchDetails() {
@@ -140,17 +141,31 @@ class NotificationService {
 
     if (recurrenceType == 'once') {
       if (scheduledDate.isAfter(now)) {
-        await _localNotifications.zonedSchedule(
-          notifyId,
-          title,
-          body,
-          scheduledDate,
-          platformDetails,
-          payload: id,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-        );
+        try {
+          await _localNotifications.zonedSchedule(
+            notifyId,
+            title,
+            body,
+            scheduledDate,
+            platformDetails,
+            payload: id,
+            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+          );
+        } catch (_) {
+          await _localNotifications.zonedSchedule(
+            notifyId,
+            title,
+            body,
+            scheduledDate,
+            platformDetails,
+            payload: id,
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+          );
+        }
       }
     } else if (recurrenceType == 'weekly') {
       // For weekly recurring on specific days, schedule a notification for each day
@@ -164,18 +179,33 @@ class NotificationService {
           day,
         );
 
-        await _localNotifications.zonedSchedule(
-          dayNotifyId,
-          title,
-          body,
-          firstSchedule,
-          platformDetails,
-          payload: id,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-        );
+        try {
+          await _localNotifications.zonedSchedule(
+            dayNotifyId,
+            title,
+            body,
+            firstSchedule,
+            platformDetails,
+            payload: id,
+            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+            matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+          );
+        } catch (_) {
+          await _localNotifications.zonedSchedule(
+            dayNotifyId,
+            title,
+            body,
+            firstSchedule,
+            platformDetails,
+            payload: id,
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+            matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+          );
+        }
       }
     } else if (recurrenceType == 'monthly') {
       // Schedule monthly recurring notification
@@ -195,18 +225,33 @@ class NotificationService {
         }
       }
 
-      await _localNotifications.zonedSchedule(
-        notifyId,
-        title,
-        body,
-        firstSchedule,
-        platformDetails,
-        payload: id,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dayOfMonthAndTime,
-      );
+      try {
+        await _localNotifications.zonedSchedule(
+          notifyId,
+          title,
+          body,
+          firstSchedule,
+          platformDetails,
+          payload: id,
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: DateTimeComponents.dayOfMonthAndTime,
+        );
+      } catch (_) {
+        await _localNotifications.zonedSchedule(
+          notifyId,
+          title,
+          body,
+          firstSchedule,
+          platformDetails,
+          payload: id,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: DateTimeComponents.dayOfMonthAndTime,
+        );
+      }
     }
   }
 
@@ -230,5 +275,70 @@ class NotificationService {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
     return scheduledDate;
+  }
+
+  Future<void> scheduleTaskReminder({
+    required String id,
+    required String title,
+    required DateTime reminderTime,
+  }) async {
+    final int notifyId = _generateNotificationId('task-$id');
+    await cancelTaskReminder(id);
+
+    final tz.TZDateTime scheduledDate = tz.TZDateTime.from(reminderTime, tz.local);
+    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
+
+    if (!scheduledDate.isAfter(now)) return;
+
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'schedule_reminders_channel',
+      'Reminders & Meetings',
+      channelDescription: 'Notifications for scheduled courses, meetings and appointments',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    const NotificationDetails platformDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    try {
+      await _localNotifications.zonedSchedule(
+        notifyId,
+        'تذكير بالمهمة: $title',
+        'حان الموعد المحدد لهذه المهمة!',
+        scheduledDate,
+        platformDetails,
+        payload: id,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+    } catch (_) {
+      await _localNotifications.zonedSchedule(
+        notifyId,
+        'تذكير بالمهمة: $title',
+        'حان الموعد المحدد لهذه المهمة!',
+        scheduledDate,
+        platformDetails,
+        payload: id,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+    }
+  }
+
+  Future<void> cancelTaskReminder(String id) async {
+    await _localNotifications.cancel(_generateNotificationId('task-$id'));
   }
 }
