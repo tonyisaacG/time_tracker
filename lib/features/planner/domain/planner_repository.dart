@@ -16,6 +16,12 @@ abstract class PlannerRepository {
   /// Stream of all non-archived blocks with their tasks for [dateStr] (YYYY-MM-DD).
   Stream<List<BlockWithTasks>> watchBlocksWithTasks(String dateStr);
 
+  /// Stream of all tasks within a specific date range (inclusive).
+  Stream<List<DayTask>> watchTasksForDateRange(String startStr, String endStr);
+
+  /// Stream of all tasks for management screen.
+  Stream<List<DayTask>> watchAllTasks();
+
   /// Stream of all blocks (including archived) for management screen.
   Stream<List<DayBlock>> watchAllBlocks();
 

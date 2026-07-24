@@ -29,6 +29,19 @@ final plannerDayProvider = StreamProvider<List<BlockWithTasks>>((ref) {
   return repo.watchBlocksWithTasks(_formatDate(date));
 });
 
+final weeklyTasksProvider = StreamProvider.family<List<DayTask>, DateTime>((ref, weekMonday) {
+  final repo = ref.watch(plannerRepositoryProvider);
+  final weekEnd = weekMonday.add(const Duration(days: 7));
+  return repo.watchTasksForDateRange(
+    _formatDate(weekMonday),
+    _formatDate(weekEnd.subtract(const Duration(seconds: 1))),
+  );
+});
+
+final allTasksProvider = StreamProvider<List<DayTask>>((ref) {
+  return ref.watch(plannerRepositoryProvider).watchAllTasks();
+});
+
 // ── All Blocks (for management screen) ───────────────────────────────────────
 
 final allBlocksProvider = StreamProvider<List<DayBlock>>((ref) {

@@ -486,10 +486,17 @@ class _TaskTile extends ConsumerWidget {
               ),
             ),
           const SizedBox(width: 4),
+          IconButton(
+            icon: Icon(Icons.delete_outline_rounded, color: Colors.redAccent.withOpacity(0.7), size: 18),
+            onPressed: () {
+              ref.read(taskControllerProvider.notifier).deleteTask(task.id);
+            },
+          ),
           // Drag handle
           Icon(Icons.drag_handle_rounded, color: AppTheme.textMuted.withOpacity(0.5), size: 20),
         ],
       ),
+      onTap: () => _showTaskOptions(context, ref),
       onLongPress: () => _showTaskOptions(context, ref),
     );
   }
@@ -571,6 +578,7 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
   late final TextEditingController _notesController;
   String? _selectedActivityId;
   TimeOfDay? _reminderTimeOfDay;
+  int _estimatedMinutes = 30;
 
   @override
   void initState() {
@@ -579,6 +587,7 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
     _titleController = TextEditingController(text: t?.title ?? '');
     _notesController = TextEditingController(text: t?.notes ?? '');
     _selectedActivityId = t?.activityId;
+    _estimatedMinutes = t?.estimatedMinutes ?? 30;
     if (t?.reminderTime != null) {
       _reminderTimeOfDay = TimeOfDay.fromDateTime(t!.reminderTime!);
     }
@@ -632,6 +641,7 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
         title: title,
         notes: Value(notes.isNotEmpty ? notes : null),
         activityId: Value(_selectedActivityId),
+        estimatedMinutes: _estimatedMinutes,
         reminderTime: Value(reminderDateTime),
         updatedAt: now,
       );
@@ -646,6 +656,9 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
         notes: notes.isNotEmpty ? notes : null,
         isCompleted: false,
         sortOrder: 999,
+        recurrenceType: 'once',
+        recurrenceDays: null,
+        estimatedMinutes: _estimatedMinutes,
         reminderTime: reminderDateTime,
         completedAt: null,
         createdAt: now,
@@ -764,6 +777,34 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
                 ),
                 onTap: _pickReminderTime,
               ),
+            ),
+            const SizedBox(height: 12),
+            // Duration selector
+            DropdownButtonFormField<int>(
+              value: [15, 30, 45, 60, 90, 120, 180].contains(_estimatedMinutes) ? _estimatedMinutes : 30,
+              decoration: InputDecoration(
+                labelText: 'المدة المتوقعة (كم تستغرق المهمة؟)',
+                labelStyle: const TextStyle(color: AppTheme.textSecondary),
+                filled: true,
+                fillColor: AppTheme.background,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.border)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppTheme.border)),
+              ),
+              dropdownColor: AppTheme.surface,
+              items: const [
+                DropdownMenuItem(value: 15, child: Text('15 دقيقة', style: TextStyle(color: AppTheme.textPrimary))),
+                DropdownMenuItem(value: 30, child: Text('30 دقيقة', style: TextStyle(color: AppTheme.textPrimary))),
+                DropdownMenuItem(value: 45, child: Text('45 دقيقة', style: TextStyle(color: AppTheme.textPrimary))),
+                DropdownMenuItem(value: 60, child: Text('ساعة واحدة (60 دقيقة)', style: TextStyle(color: AppTheme.textPrimary))),
+                DropdownMenuItem(value: 90, child: Text('ساعة ونصف (90 دقيقة)', style: TextStyle(color: AppTheme.textPrimary))),
+                DropdownMenuItem(value: 120, child: Text('ساعتان (120 دقيقة)', style: TextStyle(color: AppTheme.textPrimary))),
+                DropdownMenuItem(value: 180, child: Text('3 ساعات (180 دقيقة)', style: TextStyle(color: AppTheme.textPrimary))),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _estimatedMinutes = val);
+                }
+              },
             ),
             const SizedBox(height: 12),
             // Activity link (optional)

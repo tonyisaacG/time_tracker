@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:tracker_time/core/db/database.dart';
 import '../domain/planner_repository.dart';
@@ -13,26 +14,87 @@ class PlannerRepositoryImpl implements PlannerRepository {
 
   @override
   Stream<List<BlockWithTasks>> watchBlocksWithTasks(String dateStr) {
-    // Watch blocks (non-archived), ordered by sortOrder
+    final targetDate = DateTime.tryParse(dateStr) ?? DateTime.now();
+
     final blocksStream = (_db.select(_db.dayBlocks)
           ..where((b) => b.isArchived.equals(false))
           ..orderBy([(b) => OrderingTerm.asc(b.sortOrder)]))
         .watch();
 
-    // Watch tasks for the given date, ordered by sortOrder
     final tasksStream = (_db.select(_db.dayTasks)
-          ..where((t) => t.date.equals(dateStr))
           ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
         .watch();
 
     return blocksStream.asyncExpand((blocks) {
-      return tasksStream.map((tasks) {
+      return tasksStream.map((allTasks) {
+        final matchingTasks = allTasks.where((task) {
+          if (task.date == dateStr) return true;
+          final taskDate = DateTime.tryParse(task.date);
+          if (taskDate == null || targetDate.isBefore(taskDate)) return false;
+
+          switch (task.recurrenceType) {
+            case 'daily':
+              return true;
+            case 'weekly':
+              if (task.recurrenceDays != null) {
+                try {
+                  final List<dynamic> days = jsonDecode(task.recurrenceDays!);
+                  return days.contains(targetDate.weekday);
+                } catch (_) {}
+              }
+              return taskDate.weekday == targetDate.weekday;
+            case 'monthly':
+              return taskDate.day == targetDate.day;
+            default:
+              return false;
+          }
+        }).toList();
+
         return blocks.map((block) {
-          final blockTasks = tasks.where((t) => t.blockId == block.id).toList();
+          final blockTasks = matchingTasks.where((t) => t.blockId == block.id).toList();
           return BlockWithTasks(block: block, tasks: blockTasks);
         }).toList();
       });
     });
+  }
+
+  @override
+  Stream<List<DayTask>> watchTasksForDateRange(String startStr, String endStr) {
+    final startDate = DateTime.tryParse(startStr) ?? DateTime.now();
+    final endDate = DateTime.tryParse(endStr) ?? DateTime.now().add(const Duration(days: 7));
+
+    return (_db.select(_db.dayTasks)
+          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+        .watch()
+        .map((allTasks) {
+      return allTasks.where((task) {
+        final taskDate = DateTime.tryParse(task.date);
+        if (taskDate == null) return false;
+
+        if (task.date.compareTo(startStr) >= 0 && task.date.compareTo(endStr) <= 0) {
+          return true;
+        }
+
+        if (taskDate.isAfter(endDate)) return false;
+
+        switch (task.recurrenceType) {
+          case 'daily':
+            return true;
+          case 'weekly':
+          case 'monthly':
+            return true;
+          default:
+            return false;
+        }
+      }).toList();
+    });
+  }
+
+  @override
+  Stream<List<DayTask>> watchAllTasks() {
+    return (_db.select(_db.dayTasks)
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+        .watch();
   }
 
   @override

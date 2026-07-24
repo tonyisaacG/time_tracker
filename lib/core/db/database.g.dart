@@ -2734,6 +2734,41 @@ class $DayTasksTable extends DayTasks with TableInfo<$DayTasksTable, DayTask> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _recurrenceTypeMeta = const VerificationMeta(
+    'recurrenceType',
+  );
+  @override
+  late final GeneratedColumn<String> recurrenceType = GeneratedColumn<String>(
+    'recurrence_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('once'),
+  );
+  static const VerificationMeta _recurrenceDaysMeta = const VerificationMeta(
+    'recurrenceDays',
+  );
+  @override
+  late final GeneratedColumn<String> recurrenceDays = GeneratedColumn<String>(
+    'recurrence_days',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _estimatedMinutesMeta = const VerificationMeta(
+    'estimatedMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> estimatedMinutes = GeneratedColumn<int>(
+    'estimated_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(30),
+  );
   static const VerificationMeta _reminderTimeMeta = const VerificationMeta(
     'reminderTime',
   );
@@ -2788,6 +2823,9 @@ class $DayTasksTable extends DayTasks with TableInfo<$DayTasksTable, DayTask> {
     notes,
     isCompleted,
     sortOrder,
+    recurrenceType,
+    recurrenceDays,
+    estimatedMinutes,
     reminderTime,
     completedAt,
     createdAt,
@@ -2859,6 +2897,33 @@ class $DayTasksTable extends DayTasks with TableInfo<$DayTasksTable, DayTask> {
       context.handle(
         _sortOrderMeta,
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('recurrence_type')) {
+      context.handle(
+        _recurrenceTypeMeta,
+        recurrenceType.isAcceptableOrUnknown(
+          data['recurrence_type']!,
+          _recurrenceTypeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('recurrence_days')) {
+      context.handle(
+        _recurrenceDaysMeta,
+        recurrenceDays.isAcceptableOrUnknown(
+          data['recurrence_days']!,
+          _recurrenceDaysMeta,
+        ),
+      );
+    }
+    if (data.containsKey('estimated_minutes')) {
+      context.handle(
+        _estimatedMinutesMeta,
+        estimatedMinutes.isAcceptableOrUnknown(
+          data['estimated_minutes']!,
+          _estimatedMinutesMeta,
+        ),
       );
     }
     if (data.containsKey('reminder_time')) {
@@ -2936,6 +3001,18 @@ class $DayTasksTable extends DayTasks with TableInfo<$DayTasksTable, DayTask> {
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      recurrenceType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recurrence_type'],
+      )!,
+      recurrenceDays: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recurrence_days'],
+      ),
+      estimatedMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}estimated_minutes'],
+      )!,
       reminderTime: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}reminder_time'],
@@ -2970,6 +3047,9 @@ class DayTask extends DataClass implements Insertable<DayTask> {
   final String? notes;
   final bool isCompleted;
   final int sortOrder;
+  final String recurrenceType;
+  final String? recurrenceDays;
+  final int estimatedMinutes;
   final DateTime? reminderTime;
   final DateTime? completedAt;
   final DateTime createdAt;
@@ -2983,6 +3063,9 @@ class DayTask extends DataClass implements Insertable<DayTask> {
     this.notes,
     required this.isCompleted,
     required this.sortOrder,
+    required this.recurrenceType,
+    this.recurrenceDays,
+    required this.estimatedMinutes,
     this.reminderTime,
     this.completedAt,
     required this.createdAt,
@@ -3003,6 +3086,11 @@ class DayTask extends DataClass implements Insertable<DayTask> {
     }
     map['is_completed'] = Variable<bool>(isCompleted);
     map['sort_order'] = Variable<int>(sortOrder);
+    map['recurrence_type'] = Variable<String>(recurrenceType);
+    if (!nullToAbsent || recurrenceDays != null) {
+      map['recurrence_days'] = Variable<String>(recurrenceDays);
+    }
+    map['estimated_minutes'] = Variable<int>(estimatedMinutes);
     if (!nullToAbsent || reminderTime != null) {
       map['reminder_time'] = Variable<DateTime>(reminderTime);
     }
@@ -3028,6 +3116,11 @@ class DayTask extends DataClass implements Insertable<DayTask> {
           : Value(notes),
       isCompleted: Value(isCompleted),
       sortOrder: Value(sortOrder),
+      recurrenceType: Value(recurrenceType),
+      recurrenceDays: recurrenceDays == null && nullToAbsent
+          ? const Value.absent()
+          : Value(recurrenceDays),
+      estimatedMinutes: Value(estimatedMinutes),
       reminderTime: reminderTime == null && nullToAbsent
           ? const Value.absent()
           : Value(reminderTime),
@@ -3053,6 +3146,9 @@ class DayTask extends DataClass implements Insertable<DayTask> {
       notes: serializer.fromJson<String?>(json['notes']),
       isCompleted: serializer.fromJson<bool>(json['isCompleted']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      recurrenceType: serializer.fromJson<String>(json['recurrenceType']),
+      recurrenceDays: serializer.fromJson<String?>(json['recurrenceDays']),
+      estimatedMinutes: serializer.fromJson<int>(json['estimatedMinutes']),
       reminderTime: serializer.fromJson<DateTime?>(json['reminderTime']),
       completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -3071,6 +3167,9 @@ class DayTask extends DataClass implements Insertable<DayTask> {
       'notes': serializer.toJson<String?>(notes),
       'isCompleted': serializer.toJson<bool>(isCompleted),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'recurrenceType': serializer.toJson<String>(recurrenceType),
+      'recurrenceDays': serializer.toJson<String?>(recurrenceDays),
+      'estimatedMinutes': serializer.toJson<int>(estimatedMinutes),
       'reminderTime': serializer.toJson<DateTime?>(reminderTime),
       'completedAt': serializer.toJson<DateTime?>(completedAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -3087,6 +3186,9 @@ class DayTask extends DataClass implements Insertable<DayTask> {
     Value<String?> notes = const Value.absent(),
     bool? isCompleted,
     int? sortOrder,
+    String? recurrenceType,
+    Value<String?> recurrenceDays = const Value.absent(),
+    int? estimatedMinutes,
     Value<DateTime?> reminderTime = const Value.absent(),
     Value<DateTime?> completedAt = const Value.absent(),
     DateTime? createdAt,
@@ -3100,6 +3202,11 @@ class DayTask extends DataClass implements Insertable<DayTask> {
     notes: notes.present ? notes.value : this.notes,
     isCompleted: isCompleted ?? this.isCompleted,
     sortOrder: sortOrder ?? this.sortOrder,
+    recurrenceType: recurrenceType ?? this.recurrenceType,
+    recurrenceDays: recurrenceDays.present
+        ? recurrenceDays.value
+        : this.recurrenceDays,
+    estimatedMinutes: estimatedMinutes ?? this.estimatedMinutes,
     reminderTime: reminderTime.present ? reminderTime.value : this.reminderTime,
     completedAt: completedAt.present ? completedAt.value : this.completedAt,
     createdAt: createdAt ?? this.createdAt,
@@ -3119,6 +3226,15 @@ class DayTask extends DataClass implements Insertable<DayTask> {
           ? data.isCompleted.value
           : this.isCompleted,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      recurrenceType: data.recurrenceType.present
+          ? data.recurrenceType.value
+          : this.recurrenceType,
+      recurrenceDays: data.recurrenceDays.present
+          ? data.recurrenceDays.value
+          : this.recurrenceDays,
+      estimatedMinutes: data.estimatedMinutes.present
+          ? data.estimatedMinutes.value
+          : this.estimatedMinutes,
       reminderTime: data.reminderTime.present
           ? data.reminderTime.value
           : this.reminderTime,
@@ -3141,6 +3257,9 @@ class DayTask extends DataClass implements Insertable<DayTask> {
           ..write('notes: $notes, ')
           ..write('isCompleted: $isCompleted, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('recurrenceType: $recurrenceType, ')
+          ..write('recurrenceDays: $recurrenceDays, ')
+          ..write('estimatedMinutes: $estimatedMinutes, ')
           ..write('reminderTime: $reminderTime, ')
           ..write('completedAt: $completedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -3159,6 +3278,9 @@ class DayTask extends DataClass implements Insertable<DayTask> {
     notes,
     isCompleted,
     sortOrder,
+    recurrenceType,
+    recurrenceDays,
+    estimatedMinutes,
     reminderTime,
     completedAt,
     createdAt,
@@ -3176,6 +3298,9 @@ class DayTask extends DataClass implements Insertable<DayTask> {
           other.notes == this.notes &&
           other.isCompleted == this.isCompleted &&
           other.sortOrder == this.sortOrder &&
+          other.recurrenceType == this.recurrenceType &&
+          other.recurrenceDays == this.recurrenceDays &&
+          other.estimatedMinutes == this.estimatedMinutes &&
           other.reminderTime == this.reminderTime &&
           other.completedAt == this.completedAt &&
           other.createdAt == this.createdAt &&
@@ -3191,6 +3316,9 @@ class DayTasksCompanion extends UpdateCompanion<DayTask> {
   final Value<String?> notes;
   final Value<bool> isCompleted;
   final Value<int> sortOrder;
+  final Value<String> recurrenceType;
+  final Value<String?> recurrenceDays;
+  final Value<int> estimatedMinutes;
   final Value<DateTime?> reminderTime;
   final Value<DateTime?> completedAt;
   final Value<DateTime> createdAt;
@@ -3205,6 +3333,9 @@ class DayTasksCompanion extends UpdateCompanion<DayTask> {
     this.notes = const Value.absent(),
     this.isCompleted = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.recurrenceType = const Value.absent(),
+    this.recurrenceDays = const Value.absent(),
+    this.estimatedMinutes = const Value.absent(),
     this.reminderTime = const Value.absent(),
     this.completedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -3220,6 +3351,9 @@ class DayTasksCompanion extends UpdateCompanion<DayTask> {
     this.notes = const Value.absent(),
     this.isCompleted = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.recurrenceType = const Value.absent(),
+    this.recurrenceDays = const Value.absent(),
+    this.estimatedMinutes = const Value.absent(),
     this.reminderTime = const Value.absent(),
     this.completedAt = const Value.absent(),
     required DateTime createdAt,
@@ -3240,6 +3374,9 @@ class DayTasksCompanion extends UpdateCompanion<DayTask> {
     Expression<String>? notes,
     Expression<bool>? isCompleted,
     Expression<int>? sortOrder,
+    Expression<String>? recurrenceType,
+    Expression<String>? recurrenceDays,
+    Expression<int>? estimatedMinutes,
     Expression<DateTime>? reminderTime,
     Expression<DateTime>? completedAt,
     Expression<DateTime>? createdAt,
@@ -3255,6 +3392,9 @@ class DayTasksCompanion extends UpdateCompanion<DayTask> {
       if (notes != null) 'notes': notes,
       if (isCompleted != null) 'is_completed': isCompleted,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (recurrenceType != null) 'recurrence_type': recurrenceType,
+      if (recurrenceDays != null) 'recurrence_days': recurrenceDays,
+      if (estimatedMinutes != null) 'estimated_minutes': estimatedMinutes,
       if (reminderTime != null) 'reminder_time': reminderTime,
       if (completedAt != null) 'completed_at': completedAt,
       if (createdAt != null) 'created_at': createdAt,
@@ -3272,6 +3412,9 @@ class DayTasksCompanion extends UpdateCompanion<DayTask> {
     Value<String?>? notes,
     Value<bool>? isCompleted,
     Value<int>? sortOrder,
+    Value<String>? recurrenceType,
+    Value<String?>? recurrenceDays,
+    Value<int>? estimatedMinutes,
     Value<DateTime?>? reminderTime,
     Value<DateTime?>? completedAt,
     Value<DateTime>? createdAt,
@@ -3287,6 +3430,9 @@ class DayTasksCompanion extends UpdateCompanion<DayTask> {
       notes: notes ?? this.notes,
       isCompleted: isCompleted ?? this.isCompleted,
       sortOrder: sortOrder ?? this.sortOrder,
+      recurrenceType: recurrenceType ?? this.recurrenceType,
+      recurrenceDays: recurrenceDays ?? this.recurrenceDays,
+      estimatedMinutes: estimatedMinutes ?? this.estimatedMinutes,
       reminderTime: reminderTime ?? this.reminderTime,
       completedAt: completedAt ?? this.completedAt,
       createdAt: createdAt ?? this.createdAt,
@@ -3322,6 +3468,15 @@ class DayTasksCompanion extends UpdateCompanion<DayTask> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (recurrenceType.present) {
+      map['recurrence_type'] = Variable<String>(recurrenceType.value);
+    }
+    if (recurrenceDays.present) {
+      map['recurrence_days'] = Variable<String>(recurrenceDays.value);
+    }
+    if (estimatedMinutes.present) {
+      map['estimated_minutes'] = Variable<int>(estimatedMinutes.value);
+    }
     if (reminderTime.present) {
       map['reminder_time'] = Variable<DateTime>(reminderTime.value);
     }
@@ -3351,6 +3506,9 @@ class DayTasksCompanion extends UpdateCompanion<DayTask> {
           ..write('notes: $notes, ')
           ..write('isCompleted: $isCompleted, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('recurrenceType: $recurrenceType, ')
+          ..write('recurrenceDays: $recurrenceDays, ')
+          ..write('estimatedMinutes: $estimatedMinutes, ')
           ..write('reminderTime: $reminderTime, ')
           ..write('completedAt: $completedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -5294,6 +5452,9 @@ typedef $$DayTasksTableCreateCompanionBuilder =
       Value<String?> notes,
       Value<bool> isCompleted,
       Value<int> sortOrder,
+      Value<String> recurrenceType,
+      Value<String?> recurrenceDays,
+      Value<int> estimatedMinutes,
       Value<DateTime?> reminderTime,
       Value<DateTime?> completedAt,
       required DateTime createdAt,
@@ -5310,6 +5471,9 @@ typedef $$DayTasksTableUpdateCompanionBuilder =
       Value<String?> notes,
       Value<bool> isCompleted,
       Value<int> sortOrder,
+      Value<String> recurrenceType,
+      Value<String?> recurrenceDays,
+      Value<int> estimatedMinutes,
       Value<DateTime?> reminderTime,
       Value<DateTime?> completedAt,
       Value<DateTime> createdAt,
@@ -5394,6 +5558,21 @@ class $$DayTasksTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recurrenceType => $composableBuilder(
+    column: $table.recurrenceType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recurrenceDays => $composableBuilder(
+    column: $table.recurrenceDays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get estimatedMinutes => $composableBuilder(
+    column: $table.estimatedMinutes,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5503,6 +5682,21 @@ class $$DayTasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get recurrenceType => $composableBuilder(
+    column: $table.recurrenceType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recurrenceDays => $composableBuilder(
+    column: $table.recurrenceDays,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get estimatedMinutes => $composableBuilder(
+    column: $table.estimatedMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get reminderTime => $composableBuilder(
     column: $table.reminderTime,
     builder: (column) => ColumnOrderings(column),
@@ -5598,6 +5792,21 @@ class $$DayTasksTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get recurrenceType => $composableBuilder(
+    column: $table.recurrenceType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get recurrenceDays => $composableBuilder(
+    column: $table.recurrenceDays,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get estimatedMinutes => $composableBuilder(
+    column: $table.estimatedMinutes,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get reminderTime => $composableBuilder(
     column: $table.reminderTime,
@@ -5698,6 +5907,9 @@ class $$DayTasksTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<bool> isCompleted = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<String> recurrenceType = const Value.absent(),
+                Value<String?> recurrenceDays = const Value.absent(),
+                Value<int> estimatedMinutes = const Value.absent(),
                 Value<DateTime?> reminderTime = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -5712,6 +5924,9 @@ class $$DayTasksTableTableManager
                 notes: notes,
                 isCompleted: isCompleted,
                 sortOrder: sortOrder,
+                recurrenceType: recurrenceType,
+                recurrenceDays: recurrenceDays,
+                estimatedMinutes: estimatedMinutes,
                 reminderTime: reminderTime,
                 completedAt: completedAt,
                 createdAt: createdAt,
@@ -5728,6 +5943,9 @@ class $$DayTasksTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<bool> isCompleted = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<String> recurrenceType = const Value.absent(),
+                Value<String?> recurrenceDays = const Value.absent(),
+                Value<int> estimatedMinutes = const Value.absent(),
                 Value<DateTime?> reminderTime = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
                 required DateTime createdAt,
@@ -5742,6 +5960,9 @@ class $$DayTasksTableTableManager
                 notes: notes,
                 isCompleted: isCompleted,
                 sortOrder: sortOrder,
+                recurrenceType: recurrenceType,
+                recurrenceDays: recurrenceDays,
+                estimatedMinutes: estimatedMinutes,
                 reminderTime: reminderTime,
                 completedAt: completedAt,
                 createdAt: createdAt,

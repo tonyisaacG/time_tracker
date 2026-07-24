@@ -1,12 +1,18 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:tracker_time/core/theme/app_theme.dart';
 import 'package:tracker_time/core/db/database.dart';
 import 'package:tracker_time/features/activity/application/activity_providers.dart';
+import 'package:tracker_time/features/schedule/application/schedule_providers.dart';
+import 'package:tracker_time/features/schedule/presentation/weekly_timeline_view.dart';
+import 'package:tracker_time/features/planner/application/planner_providers.dart';
 import '../application/report_service.dart';
 import '../domain/report_models.dart';
 import 'widgets/custom_charts.dart';
+import 'widgets/unified_planning_timeline.dart';
+import 'widgets/activity_insights_card.dart';
 
 class ReportScreen extends ConsumerStatefulWidget {
   const ReportScreen({super.key});
@@ -128,6 +134,10 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                           _buildOverallSummaryCard(report),
                           const SizedBox(height: 16),
                           _buildTimeAccountabilityCard(report),
+                          const SizedBox(height: 16),
+                          _ScheduleAndTaskReportSection(reportDate: date, periodType: _selectedPeriod),
+                          const SizedBox(height: 16),
+                          ActivityInsightsCard(reportDate: date, periodType: _selectedPeriod),
                           const SizedBox(height: 16),
 
                           // Neglected Activities section (Only show for Weekly and if not empty)
@@ -630,6 +640,291 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Schedule & Task Report Section
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ScheduleAndTaskReportSection extends ConsumerWidget {
+  final DateTime reportDate;
+  final PeriodType periodType;
+
+  const _ScheduleAndTaskReportSection({
+    required this.reportDate,
+    required this.periodType,
+  });
+
+  String _formatDateStr(DateTime dt) =>
+      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
+  String _formatHours(double hours) {
+    final h = hours.floor();
+    final m = ((hours - h) * 60).round();
+    if (h > 0 && m > 0) {
+      return '${h}h ${m}m';
+    } else if (h > 0) {
+      return '${h}h';
+    } else {
+      return '${m}m';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    late DateTime startDate;
+    late DateTime endDate;
+
+    if (periodType == PeriodType.daily) {
+      startDate = DateTime(reportDate.year, reportDate.month, reportDate.day);
+      endDate = startDate.add(const Duration(days: 1));
+    } else if (periodType == PeriodType.weekly) {
+      final daysToSubtract = reportDate.weekday - 1;
+      startDate = DateTime(reportDate.year, reportDate.month, reportDate.day)
+          .subtract(Duration(days: daysToSubtract));
+      endDate = startDate.add(const Duration(days: 7));
+    } else {
+      startDate = DateTime(reportDate.year, reportDate.month, 1);
+      endDate = DateTime(reportDate.year, reportDate.month + 1, 1);
+    }
+
+    final appointmentsAsync = ref.watch(allAppointmentsProvider);
+    final tasksAsync = ref.watch(weeklyTasksProvider(startDate));
+    final activitiesAsync = ref.watch(allActivitiesProvider);
+
+    final appointments = appointmentsAsync.valueOrNull ?? [];
+    final tasks = tasksAsync.valueOrNull ?? [];
+    final activities = activitiesAsync.valueOrNull ?? [];
+
+    final Map<String, Activity> actMap = {for (final a in activities) a.id: a};
+    final activeAppointments = appointments.where((a) => !a.isArchived && a.isEnabled).toList();
+
+    final daysCount = endDate.difference(startDate).inDays;
+    final days = List.generate(daysCount, (i) => startDate.add(Duration(days: i)));
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: AppTheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.edit_calendar_rounded, color: AppTheme.primaryGlow, size: 22),
+                const SizedBox(width: 8),
+                const Text(
+                  'SCHEDULE & TASK BREAKDOWN',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 440,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.all(Radius.circular(12)),
+                child: UnifiedPlanningTimeline(
+                  selectedDate: reportDate,
+                  periodType: periodType,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            ...days.map((day) {
+              final dateStr = _formatDateStr(day);
+              final dayTasks = tasks.where((t) => t.date == dateStr).toList();
+
+              final dayAppts = <Appointment>[];
+              for (final appt in activeAppointments) {
+                switch (appt.recurrenceType) {
+                  case 'once':
+                    if (appt.startTime.year == day.year &&
+                        appt.startTime.month == day.month &&
+                        appt.startTime.day == day.day) {
+                      dayAppts.add(appt);
+                    }
+                    break;
+                  case 'weekly':
+                    if (appt.recurrenceDays != null) {
+                      final List<int> daysList = List<int>.from(jsonDecode(appt.recurrenceDays!));
+                      if (daysList.contains(day.weekday)) {
+                        dayAppts.add(appt);
+                      }
+                    }
+                    break;
+                  case 'monthly':
+                    if (appt.startTime.day == day.day) {
+                      dayAppts.add(appt);
+                    }
+                    break;
+                }
+              }
+
+              double busyMinutes = 0;
+              for (final appt in dayAppts) {
+                busyMinutes += appt.durationMinutes;
+              }
+              for (final task in dayTasks) {
+                busyMinutes += 30;
+              }
+
+              final consumedHours = (busyMinutes / 60.0).clamp(0.0, 24.0);
+              final freeHours = (24.0 - consumedHours).clamp(0.0, 24.0);
+
+              final dayTitle = DateFormat('EEEE, MMM d').format(day);
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: AppTheme.background,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: ExpansionTile(
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  title: Text(
+                    dayTitle,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Busy: ${_formatHours(consumedHours)}',
+                          style: const TextStyle(fontSize: 11, color: AppTheme.primaryGlow, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Free: ${_formatHours(freeHours)}',
+                          style: const TextStyle(fontSize: 11, color: Colors.greenAccent, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Schedules',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                          ),
+                          const SizedBox(height: 6),
+                          if (dayAppts.isEmpty)
+                            const Text('No scheduled appointments', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))
+                          else
+                            ...dayAppts.map((appt) {
+                              final activity = appt.activityId != null ? actMap[appt.activityId] : null;
+                              final actColor = activity != null ? Color(activity.color) : AppTheme.primaryGlow;
+                              final timeStr = DateFormat('h:mm a').format(appt.startTime);
+                              final endTime = appt.startTime.add(Duration(minutes: appt.durationMinutes));
+                              final endStr = DateFormat('h:mm a').format(endTime);
+
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 8, height: 8,
+                                      decoration: BoxDecoration(color: actColor, shape: BoxShape.circle),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        appt.title,
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                                      ),
+                                    ),
+                                    Text(
+                                      '$timeStr – $endStr',
+                                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+
+                          const SizedBox(height: 16),
+
+                          const Text(
+                            'Tasks',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                          ),
+                          const SizedBox(height: 6),
+                          if (dayTasks.isEmpty)
+                            const Text('No tasks created for this day', style: TextStyle(fontSize: 11, color: AppTheme.textMuted))
+                          else
+                            ...dayTasks.map((task) {
+                              final timeStr = task.reminderTime != null
+                                  ? DateFormat('h:mm a').format(task.reminderTime!)
+                                  : 'Untimed Task';
+
+                              return Row(
+                                children: [
+                                  Checkbox(
+                                    value: task.isCompleted,
+                                    activeColor: AppTheme.primaryGlow,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    onChanged: (_) {
+                                      ref.read(taskControllerProvider.notifier).toggleTask(task);
+                                    },
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      task.title,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: task.isCompleted ? AppTheme.textMuted : AppTheme.textPrimary,
+                                        decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: task.reminderTime != null
+                                          ? AppTheme.primaryGlow.withOpacity(0.12)
+                                          : AppTheme.textMuted.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      timeStr,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: task.reminderTime != null ? AppTheme.primaryGlow : AppTheme.textMuted,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
           ],
         ),
       ),

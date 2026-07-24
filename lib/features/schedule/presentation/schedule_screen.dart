@@ -8,6 +8,9 @@ import 'package:tracker_time/features/activity/application/activity_providers.da
 import '../application/schedule_providers.dart';
 import 'weekly_timeline_view.dart';
 
+import 'package:tracker_time/features/planner/application/planner_providers.dart';
+import 'widgets/unified_entry_dialog.dart';
+
 class ScheduleScreen extends ConsumerStatefulWidget {
   const ScheduleScreen({super.key});
 
@@ -15,144 +18,284 @@ class ScheduleScreen extends ConsumerStatefulWidget {
   ConsumerState<ScheduleScreen> createState() => _ScheduleScreenState();
 }
 
-
-class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
-    with SingleTickerProviderStateMixin {
+class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   bool _showArchived = false;
-  late final TabController _tabController;
+  int _filterIndex = 0; // 0=All, 1=Appointments, 2=Tasks
+  DateTime _selectedDate = DateTime.now();
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+  bool _appointmentOccursOnDate(Appointment appt, DateTime date) {
+    if (appt.isArchived && !_showArchived) return false;
+    final apptDate = DateTime(appt.startTime.year, appt.startTime.month, appt.startTime.day);
+    final targetDate = DateTime(date.year, date.month, date.day);
+    if (targetDate.isBefore(apptDate)) return false;
+
+    switch (appt.recurrenceType) {
+      case 'none':
+      case 'once':
+        return apptDate.year == targetDate.year &&
+            apptDate.month == targetDate.month &&
+            apptDate.day == targetDate.day;
+      case 'daily':
+        return true;
+      case 'weekly':
+        if (appt.recurrenceDays != null) {
+          try {
+            final List<dynamic> days = jsonDecode(appt.recurrenceDays!);
+            return days.contains(targetDate.weekday);
+          } catch (_) {}
+        }
+        return apptDate.weekday == targetDate.weekday;
+      case 'monthly':
+        return apptDate.day == targetDate.day;
+      default:
+        return false;
+    }
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  bool _taskOccursOnDate(DayTask task, DateTime date) {
+    final targetDateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    if (task.date == targetDateStr) return true;
+    final taskDate = DateTime.tryParse(task.date);
+    if (taskDate == null) return false;
+    final targetDate = DateTime(date.year, date.month, date.day);
+    if (targetDate.isBefore(DateTime(taskDate.year, taskDate.month, taskDate.day))) return false;
+
+    switch (task.recurrenceType) {
+      case 'daily':
+        return true;
+      case 'weekly':
+        if (task.recurrenceDays != null) {
+          try {
+            final List<dynamic> days = jsonDecode(task.recurrenceDays!);
+            return days.contains(targetDate.weekday);
+          } catch (_) {}
+        }
+        return taskDate.weekday == targetDate.weekday;
+      case 'monthly':
+        return taskDate.day == targetDate.day;
+      default:
+        return false;
+    }
+  }
+
+  Widget _buildDateHeader() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final sel = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final diff = sel.difference(today).inDays;
+
+    const arabicWeekdays = ['', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+    String relativeText;
+    if (diff == 0) {
+      relativeText = 'اليوم';
+    } else if (diff == 1) {
+      relativeText = 'غداً';
+    } else if (diff == -1) {
+      relativeText = 'أمس';
+    } else {
+      relativeText = arabicWeekdays[_selectedDate.weekday];
+    }
+
+    final dateFormatted = '$relativeText – ${DateFormat('MMM d').format(_selectedDate)}';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      color: AppTheme.surface.withOpacity(0.5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left_rounded, color: AppTheme.textPrimary),
+            onPressed: () {
+              setState(() {
+                _selectedDate = _selectedDate.subtract(const Duration(days: 1));
+              });
+            },
+          ),
+          InkWell(
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _selectedDate,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2030),
+              );
+              if (picked != null) {
+                setState(() => _selectedDate = picked);
+              }
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_today_rounded, size: 16, color: AppTheme.primaryGlow),
+                  const SizedBox(width: 8),
+                  Text(
+                    dateFormatted,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textPrimary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right_rounded, color: AppTheme.textPrimary),
+            onPressed: () {
+              setState(() {
+                _selectedDate = _selectedDate.add(const Duration(days: 1));
+              });
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final appointmentsAsync = ref.watch(_showArchived ? archivedAppointmentsProvider : activeAppointmentsProvider);
+    final tasksAsync = ref.watch(allTasksProvider);
     final activitiesAsync = ref.watch(activeActivitiesProvider);
+
+    final appointments = appointmentsAsync.valueOrNull ?? [];
+    final tasks = tasksAsync.valueOrNull ?? [];
+    final activities = activitiesAsync.valueOrNull ?? [];
+
+    final dayAppts = appointments.where((a) => _appointmentOccursOnDate(a, _selectedDate)).toList();
+    final dayTasks = tasks.where((t) => _taskOccursOnDate(t, _selectedDate)).toList();
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('Schedule', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Schedule & Tasks', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          // Show archived toggle — only visible on the List tab
-          AnimatedBuilder(
-            animation: _tabController,
-            builder: (_, __) {
-              if (_tabController.index != 0) return const SizedBox.shrink();
-              return Row(
-                children: [
-                  const Text(
-                    'Archived',
-                    style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                  ),
-                  Switch(
-                    value: _showArchived,
-                    onChanged: (val) => setState(() => _showArchived = val),
-                    activeColor: AppTheme.primaryGlow,
-                  ),
-                ],
-              );
-            },
+          Row(
+            children: [
+              const Text(
+                'Archived',
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              ),
+              Switch(
+                value: _showArchived,
+                onChanged: (val) => setState(() => _showArchived = val),
+                activeColor: AppTheme.primaryGlow,
+              ),
+            ],
           ),
           const SizedBox(width: 8),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: AppTheme.primaryGlow,
-          unselectedLabelColor: AppTheme.textSecondary,
-          indicatorColor: AppTheme.primaryGlow,
-          indicatorWeight: 2.5,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          tabs: const [
-            Tab(icon: Icon(Icons.list_rounded, size: 18), text: 'List'),
-            Tab(icon: Icon(Icons.grid_view_rounded, size: 18), text: 'Timeline'),
-          ],
-        ),
       ),
-      floatingActionButton: AnimatedBuilder(
-        animation: _tabController,
-        builder: (_, __) {
-          // Only show FAB on the list tab
-          if (_tabController.index != 0) return const SizedBox.shrink();
-          return FloatingActionButton(
-            backgroundColor: AppTheme.primaryGlow,
-            foregroundColor: Colors.white,
-            child: const Icon(Icons.add_rounded),
-            onPressed: () {
-              activitiesAsync.whenData((activities) {
-                _showAppointmentForm(context, ref, activities);
-              });
-            },
-          );
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: AppTheme.primaryGlow,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add_rounded),
+        onPressed: () {
+          activitiesAsync.whenData((activitiesList) {
+            showDialog(
+              context: context,
+              builder: (_) => UnifiedEntryDialog(activities: activitiesList),
+            );
+          });
         },
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          // ── Tab 0: List ──────────────────────────────────────────────────
-          appointmentsAsync.when(
-          data: (appointments) {
-            if (appointments.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+          // Date Selector Header
+          _buildDateHeader(),
+          const SizedBox(height: 4),
+
+          // Filter Chips (All | Appointments | Tasks)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+            child: Row(
+              children: [
+                _filterChip(0, 'All (${dayAppts.length + dayTasks.length})'),
+                const SizedBox(width: 8),
+                _filterChip(1, 'Appointments (${dayAppts.length})'),
+                const SizedBox(width: 8),
+                _filterChip(2, 'Tasks (${dayTasks.length})'),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: AppTheme.border),
+
+          Expanded(
+            child: Builder(
+              builder: (context) {
+                final displayAppts = _filterIndex == 2 ? <Appointment>[] : dayAppts;
+                final displayTasks = _filterIndex == 1 ? <DayTask>[] : dayTasks;
+
+                if (displayAppts.isEmpty && displayTasks.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: AppTheme.textSecondary.withOpacity(0.05),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            _showArchived ? Icons.archive_rounded : Icons.calendar_today_rounded,
+                            size: 64,
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _showArchived ? 'No archived schedules' : 'No items found',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                        ),
+                        const SizedBox(height: 8),
+                        if (!_showArchived)
+                          const Text(
+                            'Tap + to add an appointment or task.',
+                            style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                          ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: AppTheme.textSecondary.withOpacity(0.05),
-                        shape: BoxShape.circle,
+                    if (displayAppts.isNotEmpty) ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text('APPOINTMENTS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMuted, letterSpacing: 1.1)),
                       ),
-                      child: Icon(
-                        _showArchived ? Icons.archive_rounded : Icons.calendar_today_rounded,
-                        size: 64,
-                        color: AppTheme.textMuted,
+                      ...displayAppts.map((appt) => _buildAppointmentCard(context, ref, appt)),
+                    ],
+                    if (displayTasks.isNotEmpty) ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text('TASKS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMuted, letterSpacing: 1.1)),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _showArchived ? 'No archived schedules' : 'No scheduled meetings or courses',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                    ),
-                    const SizedBox(height: 8),
-                    if (!_showArchived)
-                      const Text(
-                        'Tap the button below to schedule reminders.',
-                        style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                      ),
+                      ...displayTasks.map((task) => _buildTaskCard(context, ref, task, activities)),
+                    ],
                   ],
-                ),
-              );
-            }
-
-            return ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              itemCount: appointments.length,
-              itemBuilder: (context, index) {
-                final appt = appointments[index];
-                return _buildAppointmentCard(context, ref, appt);
+                );
               },
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, _) => Center(child: Text('Error: $err', style: const TextStyle(color: Colors.red))),
-        ),
-
-          // ── Tab 1: Timeline ──────────────────────────────────────────────
-          const WeeklyTimelineView(),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _filterChip(int index, String label) {
+    final isSelected = _filterIndex == index;
+    return ChoiceChip(
+      label: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : AppTheme.textSecondary)),
+      selected: isSelected,
+      selectedColor: AppTheme.primaryGlow,
+      onSelected: (_) => setState(() => _filterIndex = index),
+      visualDensity: VisualDensity.compact,
     );
   }
 
@@ -361,6 +504,126 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
           },
         );
       },
+    );
+  }
+
+  Widget _buildTaskCard(BuildContext context, WidgetRef ref, DayTask task, List<Activity> activities) {
+    final activity = task.activityId != null
+        ? activities.firstWhere((a) => a.id == task.activityId, orElse: () => activities.first)
+        : null;
+    final color = activity != null ? Color(activity.color) : AppTheme.primaryGlow;
+    final iconData = activity != null
+        ? (AppTheme.activityIcons[activity.icon] ?? Icons.category_rounded)
+        : Icons.task_alt_rounded;
+
+    final timeStr = task.reminderTime != null ? DateFormat('jm').format(task.reminderTime!) : 'Untimed Task';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: AppTheme.surface,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+          child: Icon(iconData, color: color, size: 20),
+        ),
+        title: Text(
+          task.title,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 15,
+            color: task.isCompleted ? AppTheme.textMuted : AppTheme.textPrimary,
+            decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+          ),
+        ),
+        subtitle: Row(
+          children: [
+            const Icon(Icons.access_time_rounded, size: 12, color: AppTheme.textSecondary),
+            const SizedBox(width: 4),
+            Text(timeStr, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(color: AppTheme.primaryGlow.withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
+              child: Text(
+                task.recurrenceType.toUpperCase(),
+                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primaryGlow),
+              ),
+            ),
+          ],
+        ),
+        trailing: IconButton(
+          icon: Icon(
+            task.isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+            color: task.isCompleted ? Colors.greenAccent : AppTheme.textMuted,
+          ),
+          onPressed: () {
+            ref.read(taskControllerProvider.notifier).toggleTask(task);
+          },
+        ),
+        onTap: () => _showTaskDetailsDialog(context, ref, task, activity, activities),
+      ),
+    );
+  }
+
+  void _showTaskDetailsDialog(BuildContext context, WidgetRef ref, DayTask task, Activity? activity, List<Activity> activities) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.task_alt_rounded, color: activity != null ? Color(activity.color) : AppTheme.primaryGlow),
+            const SizedBox(width: 8),
+            Expanded(child: Text(task.title, style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (activity != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Text('Category: ${activity.name}', style: TextStyle(color: Color(activity.color), fontWeight: FontWeight.bold)),
+              ),
+            Text('Recurrence: ${task.recurrenceType}', style: const TextStyle(color: AppTheme.textSecondary)),
+            const SizedBox(height: 4),
+            Text('Time: ${task.reminderTime != null ? DateFormat('jm').format(task.reminderTime!) : 'Untimed'}', style: const TextStyle(color: AppTheme.textSecondary)),
+            if (task.notes != null && task.notes!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Notes: ${task.notes}', style: const TextStyle(color: AppTheme.textMuted)),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ref.read(taskControllerProvider.notifier).deleteTask(task.id);
+            },
+            child: const Text('Delete Task', style: TextStyle(color: Colors.redAccent)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (_) => UnifiedEntryDialog(activities: activities, existingTask: task),
+              );
+            },
+            child: const Text('Edit'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGlow),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
     );
   }
 }

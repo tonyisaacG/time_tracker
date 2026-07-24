@@ -93,6 +93,9 @@ class DayTasks extends Table {
   TextColumn get notes => text().nullable()();
   BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  TextColumn get recurrenceType => text().withDefault(const Constant('once'))();
+  TextColumn get recurrenceDays => text().nullable()();
+  IntColumn get estimatedMinutes => integer().withDefault(const Constant(30))();
   DateTimeColumn get reminderTime => dateTime().nullable()();
   DateTimeColumn get completedAt => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime()();
@@ -108,7 +111,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? _openConnection());
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration {
@@ -169,6 +172,11 @@ class AppDatabase extends _$AppDatabase {
         if (from < 10) {
           await m.addColumn(appointments, appointments.notes);
           await m.addColumn(dayTasks, dayTasks.notes);
+        }
+        if (from < 11) {
+          await m.addColumn(dayTasks, dayTasks.recurrenceType);
+          await m.addColumn(dayTasks, dayTasks.recurrenceDays);
+          await m.addColumn(dayTasks, dayTasks.estimatedMinutes);
         }
       },
     );
