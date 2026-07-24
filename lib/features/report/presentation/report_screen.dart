@@ -130,6 +130,54 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                           _buildTimeAccountabilityCard(report),
                           const SizedBox(height: 16),
 
+                          // Neglected Activities section (Only show for Weekly and if not empty)
+                          if (_selectedPeriod == PeriodType.weekly && report.neglectedActivities.isNotEmpty) ...[
+                            _buildSectionHeader('Neglected This Week ⚠️'),
+                            Card(
+                              color: const Color(0xffef4444).withOpacity(0.06),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(color: const Color(0xffef4444).withOpacity(0.2), width: 1.2),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'You have not invested any time in the following target activities this week:',
+                                      style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    ...report.neglectedActivities.map((act) {
+                                      final actColor = Color(act.color);
+                                      final icon = AppTheme.activityIcons[act.icon] ?? Icons.category_rounded;
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                        child: Row(
+                                          children: [
+                                            Icon(icon, color: actColor, size: 18),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              act.name,
+                                              style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontSize: 14),
+                                            ),
+                                            const Spacer(),
+                                            Text(
+                                              'Target: ${(act.weeklyGoalMinutes! / 60.0).toStringAsFixed(1)}h',
+                                              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+
                           // Weekly trend chart (Only show for Weekly periods)
                           if (_selectedPeriod == PeriodType.weekly) ...[
                             _buildSectionHeader('Weekly Trend'),

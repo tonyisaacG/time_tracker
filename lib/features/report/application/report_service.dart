@@ -108,13 +108,20 @@ ReportData _calculateReport(
   }
 
   final List<ActivityReportItem> items = [];
+  final List<Activity> neglectedActivities = [];
+  
   for (final act in activities) {
     final mins = durationByActivity[act.id] ?? 0;
     final hasGoal = act.weeklyGoalMinutes != null && act.weeklyGoalMinutes! > 0;
     
-    // Include if tracked minutes exist, OR (for weekly reports and active goals)
+    // Include in general list if tracked minutes exist, OR (for weekly reports and active goals)
     if (mins > 0 || (type == PeriodType.weekly && !act.isArchived && hasGoal)) {
       items.add(ActivityReportItem(activity: act, totalMinutes: mins));
+    }
+
+    // Neglected: Active activity, has a weekly goal/limit, but has 0 minutes tracked so far
+    if (!act.isArchived && !act.isDeleted && hasGoal && mins == 0) {
+      neglectedActivities.add(act);
     }
   }
 
@@ -127,5 +134,6 @@ ReportData _calculateReport(
     totalMinutes: totalMinutes,
     items: items,
     timeBySubPeriod: subPeriodTime,
+    neglectedActivities: neglectedActivities,
   );
 }

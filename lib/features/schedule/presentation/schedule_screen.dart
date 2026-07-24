@@ -6,6 +6,7 @@ import 'package:tracker_time/core/theme/app_theme.dart';
 import 'package:tracker_time/core/db/database.dart';
 import 'package:tracker_time/features/activity/application/activity_providers.dart';
 import '../application/schedule_providers.dart';
+import 'weekly_timeline_view.dart';
 
 class ScheduleScreen extends ConsumerStatefulWidget {
   const ScheduleScreen({super.key});
@@ -14,8 +15,23 @@ class ScheduleScreen extends ConsumerStatefulWidget {
   ConsumerState<ScheduleScreen> createState() => _ScheduleScreenState();
 }
 
-class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
+
+class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
+    with SingleTickerProviderStateMixin {
   bool _showArchived = false;
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,82 +45,113 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          Row(
-            children: [
-              const Text(
-                'Show Archived',
-                style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-              ),
-              Switch(
-                value: _showArchived,
-                onChanged: (val) {
-                  setState(() {
-                    _showArchived = val;
-                  });
-                },
-                activeColor: AppTheme.primaryGlow,
-              ),
-            ],
-          ),
-          const SizedBox(width: 16),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppTheme.primaryGlow,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add_rounded),
-        onPressed: () {
-          activitiesAsync.whenData((activities) {
-            _showAppointmentForm(context, ref, activities);
-          });
-        },
-      ),
-      body: appointmentsAsync.when(
-        data: (appointments) {
-          if (appointments.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+          // Show archived toggle — only visible on the List tab
+          AnimatedBuilder(
+            animation: _tabController,
+            builder: (_, __) {
+              if (_tabController.index != 0) return const SizedBox.shrink();
+              return Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: AppTheme.textSecondary.withOpacity(0.05),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _showArchived ? Icons.archive_rounded : Icons.calendar_today_rounded,
-                      size: 64,
-                      color: AppTheme.textMuted,
-                    ),
+                  const Text(
+                    'Archived',
+                    style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _showArchived ? 'No archived schedules' : 'No scheduled meetings or courses',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                  Switch(
+                    value: _showArchived,
+                    onChanged: (val) => setState(() => _showArchived = val),
+                    activeColor: AppTheme.primaryGlow,
                   ),
-                  const SizedBox(height: 8),
-                  if (!_showArchived)
-                    const Text(
-                      'Tap the button below to schedule reminders.',
-                      style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                    ),
                 ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            itemCount: appointments.length,
-            itemBuilder: (context, index) {
-              final appt = appointments[index];
-              return _buildAppointmentCard(context, ref, appt);
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: AppTheme.primaryGlow,
+          unselectedLabelColor: AppTheme.textSecondary,
+          indicatorColor: AppTheme.primaryGlow,
+          indicatorWeight: 2.5,
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          tabs: const [
+            Tab(icon: Icon(Icons.list_rounded, size: 18), text: 'List'),
+            Tab(icon: Icon(Icons.grid_view_rounded, size: 18), text: 'Timeline'),
+          ],
+        ),
+      ),
+      floatingActionButton: AnimatedBuilder(
+        animation: _tabController,
+        builder: (_, __) {
+          // Only show FAB on the list tab
+          if (_tabController.index != 0) return const SizedBox.shrink();
+          return FloatingActionButton(
+            backgroundColor: AppTheme.primaryGlow,
+            foregroundColor: Colors.white,
+            child: const Icon(Icons.add_rounded),
+            onPressed: () {
+              activitiesAsync.whenData((activities) {
+                _showAppointmentForm(context, ref, activities);
+              });
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error: $err', style: const TextStyle(color: Colors.red))),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // ── Tab 0: List ──────────────────────────────────────────────────
+          appointmentsAsync.when(
+          data: (appointments) {
+            if (appointments.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: AppTheme.textSecondary.withOpacity(0.05),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _showArchived ? Icons.archive_rounded : Icons.calendar_today_rounded,
+                        size: 64,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _showArchived ? 'No archived schedules' : 'No scheduled meetings or courses',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                    ),
+                    const SizedBox(height: 8),
+                    if (!_showArchived)
+                      const Text(
+                        'Tap the button below to schedule reminders.',
+                        style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                      ),
+                  ],
+                ),
+              );
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              itemCount: appointments.length,
+              itemBuilder: (context, index) {
+                final appt = appointments[index];
+                return _buildAppointmentCard(context, ref, appt);
+              },
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (err, _) => Center(child: Text('Error: $err', style: const TextStyle(color: Colors.red))),
+        ),
+
+          // ── Tab 1: Timeline ──────────────────────────────────────────────
+          const WeeklyTimelineView(),
+        ],
       ),
     );
   }

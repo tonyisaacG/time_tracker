@@ -26,6 +26,7 @@ class ReportData {
   // - Weekly: Day of week (1 = Monday, 7 = Sunday)
   // - Monthly: Day of month (1 to 31)
   final Map<int, int> timeBySubPeriod;
+  final List<Activity> neglectedActivities;
 
   ReportData({
     required this.startDate,
@@ -33,5 +34,6 @@ class ReportData {
     required this.totalMinutes,
     required this.items,
     required this.timeBySubPeriod,
+    required this.neglectedActivities,
   });
 }

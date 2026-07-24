@@ -15,6 +15,7 @@ import 'package:tracker_time/features/planner/presentation/daily_planner_screen.
 
 import 'package:tracker_time/features/schedule/application/schedule_providers.dart';
 import 'package:tracker_time/features/session/application/timer_providers.dart';
+import 'package:tracker_time/features/session/application/session_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +31,45 @@ void main() async {
   final container = ProviderContainer();
   // Check and insert preset activities
   await _prepopulatePresetActivities(container);
+
+  // Schedule weekly neglected activities summary reminder
+  try {
+    final now = DateTime.now();
+    final daysToSubtract = now.weekday - 1;
+    final start = DateTime(now.year, now.month, now.day).subtract(Duration(days: daysToSubtract));
+    final end = start.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+
+    final repo = container.read(activityRepositoryProvider);
+    final sessionRepo = container.read(sessionRepositoryProvider);
+
+    final activeActivities = await repo.watchActiveActivities().first;
+    final allSessions = await sessionRepo.watchAllSessions().first;
+
+    final periodSessions = allSessions.where((s) {
+      if (s.endTime == null) return false;
+      return (s.startTime.isAfter(start) && s.startTime.isBefore(end)) || 
+             s.startTime.isAtSameMomentAs(start) || 
+             s.startTime.isAtSameMomentAs(end);
+    }).toList();
+
+    final Map<String, int> durationByActivity = {};
+    for (final s in periodSessions) {
+      durationByActivity[s.activityId] = (durationByActivity[s.activityId] ?? 0) + s.durationMinutes;
+    }
+
+    final List<String> neglectedNames = [];
+    for (final act in activeActivities) {
+      final mins = durationByActivity[act.id] ?? 0;
+      final hasGoal = act.weeklyGoalMinutes != null && act.weeklyGoalMinutes! > 0;
+      if (hasGoal && mins == 0) {
+        neglectedNames.add(act.name);
+      }
+    }
+
+    await notificationService.scheduleWeeklyReportSummaryReminder(neglectedNames: neglectedNames);
+  } catch (e) {
+    debugPrint("Failed to schedule weekly report reminder: $e");
+  }
 
   // Helper to handle notification start tracking action
   Future<void> handleStartTracking(String appointmentId) async {
@@ -295,6 +335,7 @@ class MainNavigationScreen extends ConsumerWidget {
       bottomNavigationBar: !isDesktop
           ? NavigationBar(
               selectedIndex: currentIndex,
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
               onDestinationSelected: (index) {
                 ref.read(navigationProvider.notifier).state = index;
               },

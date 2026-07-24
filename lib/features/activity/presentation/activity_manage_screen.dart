@@ -581,7 +581,9 @@ class _ActivityFormDialogState extends State<_ActivityFormDialog> {
                     });
                   },
                 ),
-                const Text('Focus on this activity this week', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Expanded(
+                  child: Text('Focus on this activity this week', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
               ],
             ),
             if (isEdit) ...[
@@ -596,7 +598,9 @@ class _ActivityFormDialogState extends State<_ActivityFormDialog> {
                       });
                     },
                   ),
-                  const Text('Archive Activity', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Expanded(
+                    child: Text('Archive Activity', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ),
                 ],
               ),
             ],

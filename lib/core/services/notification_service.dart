@@ -341,4 +341,73 @@ class NotificationService {
   Future<void> cancelTaskReminder(String id) async {
     await _localNotifications.cancel(_generateNotificationId('task-$id'));
   }
+
+  // Schedule a weekly notification on Sunday at 6 PM listing neglected target activities
+  Future<void> scheduleWeeklyReportSummaryReminder({
+    required List<String> neglectedNames,
+  }) async {
+    const int notifyId = 999999; // Unique static ID for weekly neglected reminder
+    await _localNotifications.cancel(notifyId);
+
+    if (neglectedNames.isEmpty) return;
+
+    // Schedule next Sunday at 6 PM
+    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
+    tz.TZDateTime scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, 18, 0); // 6:00 PM
+
+    // If it's already past 6 PM Sunday, schedule for next Sunday
+    while (scheduledDate.weekday != DateTime.sunday || scheduledDate.isBefore(now)) {
+      scheduledDate = scheduledDate.add(const Duration(days: 1));
+    }
+
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'schedule_reminders_channel',
+      'Reminders & Meetings',
+      channelDescription: 'Notifications for scheduled courses, meetings and appointments',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    const NotificationDetails platformDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    final String neglectedListStr = neglectedNames.join(', ');
+    final String body = 'Don\'t forget your targets! You haven\'t spent any time on: $neglectedListStr this week.';
+
+    try {
+      await _localNotifications.zonedSchedule(
+        notifyId,
+        'Neglected Activities Alert ⚠️',
+        body,
+        scheduledDate,
+        platformDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+      );
+    } catch (_) {
+      await _localNotifications.zonedSchedule(
+        notifyId,
+        'Neglected Activities Alert ⚠️',
+        body,
+        scheduledDate,
+        platformDetails,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+      );
+    }
+  }
 }

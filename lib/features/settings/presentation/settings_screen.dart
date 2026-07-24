@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart'; // Clipboard
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:permission_handler/permission_handler.dart';
 import 'package:tracker_time/core/theme/app_theme.dart';
 import 'package:tracker_time/core/db/database.dart';
 import 'package:tracker_time/features/session/application/timer_providers.dart';
@@ -149,91 +151,214 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _exportData(BuildContext context, WidgetRef ref) async {
     try {
       final db = ref.read(databaseProvider);
-      
-      final activities = await db.select(db.activities).get();
-      final sessions = await db.select(db.sessions).get();
+
+      // ── Collect all tables ─────────────────────────────────────────────
+      final activities   = await db.select(db.activities).get();
+      final sessions     = await db.select(db.sessions).get();
+      final appointments = await db.select(db.appointments).get();
+      final dayBlocks    = await db.select(db.dayBlocks).get();
+      final dayTasks     = await db.select(db.dayTasks).get();
 
       final exportMap = {
+        'exportedAt': DateTime.now().toIso8601String(),
+        'version': 2,
         'activities': activities.map((a) => {
-          'id': a.id,
-          'name': a.name,
-          'color': a.color,
-          'icon': a.icon,
+          'id': a.id, 'name': a.name, 'color': a.color, 'icon': a.icon,
           'weeklyGoalMinutes': a.weeklyGoalMinutes,
-          'isLimit': a.isLimit,
-          'enforceLimit': a.enforceLimit,
-          'isWeeklyFocus': a.isWeeklyFocus,
-          'isArchived': a.isArchived,
+          'isLimit': a.isLimit, 'enforceLimit': a.enforceLimit,
+          'isWeeklyFocus': a.isWeeklyFocus, 'isArchived': a.isArchived,
           'isDeleted': a.isDeleted,
           'createdAt': a.createdAt.toIso8601String(),
           'updatedAt': a.updatedAt.toIso8601String(),
         }).toList(),
         'sessions': sessions.map((s) => {
-          'id': s.id,
-          'activityId': s.activityId,
+          'id': s.id, 'activityId': s.activityId,
           'startTime': s.startTime.toIso8601String(),
           'endTime': s.endTime?.toIso8601String(),
           'durationMinutes': s.durationMinutes,
-          'deviceId': s.deviceId,
-          'notes': s.notes,
+          'targetDurationMinutes': s.targetDurationMinutes,
+          'deviceId': s.deviceId, 'notes': s.notes,
           'isDeleted': s.isDeleted,
           'createdAt': s.createdAt.toIso8601String(),
           'updatedAt': s.updatedAt.toIso8601String(),
         }).toList(),
+        'appointments': appointments.map((a) => {
+          'id': a.id, 'activityId': a.activityId,
+          'title': a.title, 'notes': a.notes,
+          'startTime': a.startTime.toIso8601String(),
+          'durationMinutes': a.durationMinutes,
+          'recurrenceType': a.recurrenceType,
+          'recurrenceDays': a.recurrenceDays,
+          'isEnabled': a.isEnabled, 'isArchived': a.isArchived,
+          'createdAt': a.createdAt.toIso8601String(),
+          'updatedAt': a.updatedAt.toIso8601String(),
+        }).toList(),
+        'dayBlocks': dayBlocks.map((b) => {
+          'id': b.id, 'name': b.name, 'icon': b.icon, 'color': b.color,
+          'sortOrder': b.sortOrder, 'isArchived': b.isArchived,
+          'createdAt': b.createdAt.toIso8601String(),
+          'updatedAt': b.updatedAt.toIso8601String(),
+        }).toList(),
+        'dayTasks': dayTasks.map((t) => {
+          'id': t.id, 'blockId': t.blockId, 'activityId': t.activityId,
+          'date': t.date, 'title': t.title, 'notes': t.notes,
+          'isCompleted': t.isCompleted, 'sortOrder': t.sortOrder,
+          'reminderTime': t.reminderTime?.toIso8601String(),
+          'completedAt': t.completedAt?.toIso8601String(),
+          'createdAt': t.createdAt.toIso8601String(),
+          'updatedAt': t.updatedAt.toIso8601String(),
+        }).toList(),
       };
 
       final jsonString = const JsonEncoder.withIndent('  ').convert(exportMap);
-      
-      // Copy to clipboard
+      final timestamp  = DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now());
+      final fileName   = 'TimeTracker_backup_$timestamp.json';
+
+      // ── Save to Downloads folder (visible on phone) ────────────────────
+      File? savedFile;
+      String? savedPath;
+
+      if (Platform.isAndroid) {
+        final downloadsDir = Directory('/storage/emulated/0/Download');
+        if (await downloadsDir.exists()) {
+          try {
+            // Android 10+ needs no permission; Android ≤9 will throw FileSystemException
+            savedFile = File(p.join(downloadsDir.path, fileName));
+            await savedFile.writeAsString(jsonString);
+            savedPath = savedFile.path;
+          } on FileSystemException {
+            // Android 9 and below: request WRITE_EXTERNAL_STORAGE and retry
+            final status = await Permission.storage.request();
+            if (status.isGranted) {
+              savedFile = File(p.join(downloadsDir.path, fileName));
+              await savedFile.writeAsString(jsonString);
+              savedPath = savedFile.path;
+            }
+          }
+        }
+      }
+
+      // Fallback: app documents directory (always works)
+      if (savedFile == null) {
+        final dir = await getApplicationDocumentsDirectory();
+        savedFile = File(p.join(dir.path, fileName));
+        await savedFile.writeAsString(jsonString);
+        savedPath = savedFile.path;
+      }
+
+      // Also copy to clipboard for convenience
       await Clipboard.setData(ClipboardData(text: jsonString));
 
-      // Save to file in documents
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File(p.join(directory.path, 'time_tracker_backup.json'));
-      await file.writeAsString(jsonString);
-
       if (context.mounted) {
-        showDialog(
-          context: context,
-          builder: (context) {
-            return AlertDialog(
-              title: const Text('Export Successful!'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('1. Data has been copied to your system clipboard.'),
-                  const SizedBox(height: 12),
-                  const Text('2. Backup file saved to disk:'),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.background,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      file.path,
-                      style: const TextStyle(fontSize: 11, fontFamily: 'Courier', color: AppTheme.textSecondary),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Awesome'),
-                ),
-              ],
-            );
-          },
+        _showExportSuccessDialog(
+          context,
+          filePath: savedPath!,
+          activities: activities.length,
+          sessions: sessions.length,
+          appointments: appointments.length,
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to export: $e'), backgroundColor: const Color(0xffef4444)),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to export: $e'), backgroundColor: const Color(0xffef4444)),
+        );
+      }
     }
+  }
+
+  void _showExportSuccessDialog(
+    BuildContext context, {
+    required String filePath,
+    required int activities,
+    required int sessions,
+    required int appointments,
+  }) {
+    final isDownloads = filePath.contains('/Download') || filePath.contains('/Downloads');
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_rounded, color: Color(0xff10b981), size: 24),
+            SizedBox(width: 10),
+            Text('Backup Saved!'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Stats
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xff10b981).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xff10b981).withOpacity(0.3)),
+              ),
+              child: Column(
+                children: [
+                  _statRow(Icons.category_rounded, '$activities activities'),
+                  _statRow(Icons.timer_rounded, '$sessions sessions'),
+                  _statRow(Icons.calendar_today_rounded, '$appointments appointments'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              isDownloads ? '📂 Saved to Downloads folder:' : '📂 Saved to:',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.background,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Text(
+                filePath,
+                style: const TextStyle(fontSize: 11, fontFamily: 'Courier', color: AppTheme.textSecondary),
+              ),
+            ),
+            if (isDownloads) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Open your phone\'s Files app → Downloads to find the backup file.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+            ],
+            const SizedBox(height: 8),
+            const Text(
+              '✓ Also copied to clipboard.',
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: const Color(0xff10b981)),
+          const SizedBox(width: 8),
+          Text(text, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+        ],
+      ),
+    );
   }
 
   void _showImportDialog(BuildContext context, WidgetRef ref) {
